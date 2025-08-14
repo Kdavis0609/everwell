@@ -1,8 +1,8 @@
 import { MetadataRoute } from 'next'
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Personal Health Compass',
-    short_name: 'HealthCompass',
+    name: 'Personal EverWell',
+    short_name: 'EverWell',
     start_url: '/',
     display: 'standalone',
     background_color: '#0B0F14',
