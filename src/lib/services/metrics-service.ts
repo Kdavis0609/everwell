@@ -158,22 +158,99 @@ export class MetricsService {
     const date = targetDate || new Date();
     const dateString = date.toISOString().split('T')[0];
     
-    const { data, error } = await supabase
+    // Try RPC function first
+    const { data: rpcData, error: rpcErr } = await supabase
       .rpc('get_weekly_progress', { 
         user_uuid: userId, 
         target_date: dateString 
       });
 
-    if (error) {
-      console.error('Error fetching weekly progress:', error);
-      // Check if this is a database migration issue
-      if (error.message.includes('function get_weekly_progress')) {
-        throw new Error('Database migration required. Please run the goals and planning migration in Supabase.');
+    if (!rpcErr && rpcData) {
+      // Transform RPC data to WeeklyProgress format
+      const metricGroups = new Map<string, any[]>();
+      
+      rpcData.forEach((row: any) => {
+        const slug = row.metric_slug;
+        if (!metricGroups.has(slug)) {
+          metricGroups.set(slug, []);
+        }
+        metricGroups.get(slug)!.push(row);
+      });
+
+      // Convert to WeeklyProgress format
+      const weeklyProgress: WeeklyProgress[] = [];
+      for (const [slug, measurements] of metricGroups) {
+        const numericValues = measurements
+          .map((m: any) => m.value)
+          .filter((v: any) => v !== null && v !== undefined);
+        
+        const currentAvg = numericValues.length > 0 
+          ? numericValues.reduce((sum: number, val: number) => sum + val, 0) / numericValues.length 
+          : null;
+
+        weeklyProgress.push({
+          metric_name: slug.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+          current_avg: currentAvg,
+          target_value: null, // Would need to fetch from user_metric_settings
+          progress_percent: null
+        });
       }
+
+      return weeklyProgress;
+    }
+
+    console.warn('RPC get_weekly_progress failed, using fallback:', rpcErr?.message);
+
+    // Fallback: simple last-7-days select (less aggregated but unblocks UI)
+    const start = new Date(dateString);
+    start.setDate(start.getDate() - 6);
+    const startISO = start.toISOString();
+
+    const { data, error } = await supabase
+      .from('measurements')
+      .select('metric_slug, value_numeric, value_text, value_bool, created_at')
+      .eq('user_id', userId)
+      .gte('created_at', startISO)
+      .lte('created_at', new Date(dateString).toISOString())
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Fallback weekly progress query failed:', error);
       throw new Error('Failed to fetch weekly progress: ' + error.message);
     }
 
-    return data || [];
+    // Transform the raw data into a WeeklyProgress-like format
+    const weeklyData = data || [];
+    const metricGroups = new Map<string, any[]>();
+    
+    weeklyData.forEach(measurement => {
+      const slug = measurement.metric_slug;
+      if (!metricGroups.has(slug)) {
+        metricGroups.set(slug, []);
+      }
+      metricGroups.get(slug)!.push(measurement);
+    });
+
+    // Convert to WeeklyProgress format
+    const weeklyProgress: WeeklyProgress[] = [];
+    for (const [slug, measurements] of metricGroups) {
+      const numericValues = measurements
+        .map(m => m.value_numeric)
+        .filter(v => v !== null && v !== undefined);
+      
+      const currentAvg = numericValues.length > 0 
+        ? numericValues.reduce((sum, val) => sum + val, 0) / numericValues.length 
+        : null;
+
+      weeklyProgress.push({
+        metric_name: slug.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        current_avg: currentAvg,
+        target_value: null, // Would need to fetch from user_metric_settings
+        progress_percent: null
+      });
+    }
+
+    return weeklyProgress;
   }
 
   static async updateMetricTarget(userId: string, metricId: string, targetValue: number | null): Promise<void> {

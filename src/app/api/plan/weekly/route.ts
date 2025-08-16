@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabaseClient';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { InsightsService } from '@/lib/services/insights-service';
 import { MetricsService } from '@/lib/services/metrics-service';
 
@@ -11,18 +12,41 @@ if (!OPENAI_API_KEY) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await request.json();
+    const cookieStore = await cookies();
 
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            cookieStore.set({ name, value, ...options });
+          },
+          remove(name: string, options: CookieOptions) {
+            cookieStore.set({ name, value: '', ...options });
+          },
+        },
+      }
+    );
+    
+    // Get the current user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json(
+        { ok: false, reason: 'not_authenticated', message: 'User not authenticated' },
+        { status: 401 }
+      );
     }
 
-    const supabase = createClient();
+    const userId = user.id;
     
-    // Get user profile for context
+    // Get user profile for context (only existing columns)
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id, email, full_name, avatar_url')
       .eq('id', userId)
       .single();
 
@@ -111,10 +135,8 @@ async function generateWeeklyPlan(data: {
   const userPrompt = `Generate a weekly health focus plan for this user based on their recent progress and goals.
 
 **User Profile:**
-- Age: ${data.profile?.age || 'Not specified'}
-- Sex: ${data.profile?.sex || 'Not specified'}
-- Height: ${data.profile?.height_in || 'Not specified'} inches
-- Goals: ${data.profile?.goals || 'Not specified'}
+- Name: ${data.profile?.full_name || 'User'}
+- Email: ${data.profile?.email || 'Not specified'}
 
 **Weekly Progress Summary:**
 ${data.weeklyProgress.map(p => 
