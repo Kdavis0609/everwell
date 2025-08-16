@@ -86,3 +86,25 @@ typings/
 
 # DynamoDB Local files
 .dynamodb/
+# --- Local environment files (MUST ignore — contain secrets) ---
+.env.local
+.env*.local
+.env.development.local
+.env.production.local
+.env.test.local
+
+# --- Next.js build/output ---
+.next
+out
+
+# --- Vercel project settings (local only) ---
+.vercel
+
+# --- Supabase CLI scratch data (if present) ---
+supabase/.temp
+supabase/.branches
+
+# --- OS/editor niceties ---
+.DS_Store
+.vscode/
+.idea/
