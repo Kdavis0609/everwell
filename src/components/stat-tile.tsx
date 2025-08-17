@@ -1,5 +1,6 @@
 import { Calendar, Scale, Ruler } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { formatDate } from '@/lib/utils/date';
 
 interface MetricRow {
   id: string;
@@ -14,11 +15,7 @@ interface StatTileProps {
 }
 
 export function StatTile({ metric }: StatTileProps) {
-  const date = new Date(metric.date);
-  const formattedDate = date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
+  const formattedDate = formatDate(metric.date);
 
   return (
     <Card className="transition-all duration-150 hover:shadow-md">

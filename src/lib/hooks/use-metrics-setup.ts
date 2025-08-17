@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { MetricsService } from '@/lib/services/metrics-service';
+import { logError } from '@/lib/logError';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 
 export function useMetricsSetup() {
   const router = useRouter();
@@ -15,7 +17,7 @@ export function useMetricsSetup() {
 
   const checkMetricsSetup = async () => {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await createSupabaseBrowser().auth.getUser();
       
       if (authError || !user) {
         setLoading(false);
@@ -23,7 +25,7 @@ export function useMetricsSetup() {
       }
 
       // Check if user has any enabled metrics
-      const { data: userSettings, error: settingsError } = await supabase
+      const { data: userSettings, error: settingsError } = await createSupabaseBrowser()
         .from('user_metric_settings')
         .select('enabled')
         .eq('user_id', user.id)

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { UserEnabledMetric, MetricValue, Measurement, MeasurementWithDefinition, UserPreferences, WeeklyProgress } from '@/lib/types';
-import { logError } from '@/lib/logError';
+import { logError } from '@/lib/errors';
 
 export class MetricsService {
   static async getUserEnabledMetrics(sb: SupabaseClient): Promise<UserEnabledMetric[]> {
@@ -245,30 +245,80 @@ export class MetricsService {
     if (sErr) { logError('getTodaysMeasurements.session', sErr); throw sErr; }
     if (!session) { logError('getTodaysMeasurements.auth', { message: 'No session' }); return []; }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toISOString().split('T')[0];
+    
+    try {
+      const { data, error } = await sb
+        .from('measurements')
+        .select(`
+          *,
+          metric_definitions!inner(
+            id,
+            slug,
+            name,
+            unit,
+            input_kind
+          )
+        `)
+        .eq('user_id', session.user.id)
+        .gte('measured_at', `${today}T00:00:00`)
+        .lte('measured_at', `${today}T23:59:59`)
+        .order('measured_at', { ascending: true });
 
-    const { data, error } = await sb
-      .from('measurements')
-      .select(`
-        *,
-        metric_definitions!inner(
-          slug,
-          name,
-          unit,
-          input_kind
-        )
-      `)
-      .eq('user_id', session.user.id)
-      .gte('measured_at', `${today}T00:00:00Z`)
-      .lt('measured_at', `${today}T23:59:59Z`)
-      .order('measured_at', { ascending: false });
+      if (error) {
+        logError('getTodaysMeasurements', error, { userId: session.user.id, today });
+        throw error;
+      }
 
-    if (error) {
+      return data || [];
+    } catch (error) {
       logError('getTodaysMeasurements', error, { userId: session.user.id, today });
       throw error;
     }
+  }
 
-    return data || [];
+  static async getChartData(sb: SupabaseClient, metricSlug: string, days: number = 7): Promise<Array<{ date: string; value: number }>> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('getChartData.session', sErr); throw sErr; }
+    if (!session) { logError('getChartData.auth', { message: 'No session' }); return []; }
+
+    try {
+      // Calculate date range - use a wider range to ensure we get data
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - Math.max(days, 30)); // At least 30 days back
+
+      const { data, error } = await sb
+        .from('measurements')
+        .select(`
+          measured_at,
+          value_numeric,
+          metric_definitions!inner(
+            slug
+          )
+        `)
+        .eq('user_id', session.user.id)
+        .eq('metric_definitions.slug', metricSlug)
+        .gte('measured_at', startDate.toISOString())
+        .lte('measured_at', endDate.toISOString())
+        .order('measured_at', { ascending: true });
+
+      if (error) {
+        logError('getChartData', error, { userId: session.user.id, metricSlug, days });
+        throw error;
+      }
+
+      // Transform data for chart
+      const transformedData = (data || []).map(measurement => ({
+        date: measurement.measured_at.split('T')[0],
+        value: measurement.value_numeric || 0
+      }));
+
+      return transformedData;
+    } catch (error) {
+      logError('getChartData', error, { userId: session.user.id, metricSlug, days });
+      throw error;
+    }
   }
 
   static async getUserPreferences(sb: SupabaseClient): Promise<UserPreferences> {
@@ -361,53 +411,79 @@ export class MetricsService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 7);
 
-    const { data: measurements, error: err1 } = await sb
-      .from('measurements')
-      .select(`
-        measured_at,
-        metric_id,
-        value_numeric,
-        value_text,
-        value_bool,
-        metric_definitions!inner(
-          slug,
-          name,
-          unit
-        )
-      `)
-      .eq('user_id', session.user.id)
-      .gte('measured_at', startDate.toISOString())
-      .lte('measured_at', endDate.toISOString())
-      .order('measured_at', { ascending: true });
+    try {
+      const { data: measurements, error: err1 } = await sb
+        .from('measurements')
+        .select(`
+          measured_at,
+          metric_id,
+          value_numeric,
+          value_text,
+          value_bool,
+          metric_definitions!inner(
+            slug,
+            name,
+            unit
+          )
+        `)
+        .eq('user_id', session.user.id)
+        .gte('measured_at', startDate.toISOString())
+        .lte('measured_at', endDate.toISOString())
+        .order('measured_at', { ascending: true });
 
-    if (err1) {
-      logError('getWeeklyProgress.select.measurements', err1, { userId: session.user.id });
+      if (err1) {
+        logError('getWeeklyProgress.select.measurements', err1, { userId: session.user.id });
+        return [];
+      }
+
+      // Aggregate by metric_slug
+      const byMetric = new Map<string, any>();
+      for (const row of measurements || []) {
+        const metricDef = row.metric_definitions as any;
+        const metricSlug = metricDef.slug;
+        const bucket = byMetric.get(metricSlug) ?? { 
+          metric_slug: metricSlug, 
+          metric_name: metricDef.name,
+          values: [] as any[] 
+        };
+        
+        const value = row.value_numeric ?? row.value_text ?? row.value_bool;
+        if (value !== null) {
+          bucket.values.push({ 
+            date: row.measured_at.split('T')[0], 
+            value 
+          });
+        }
+        
+        byMetric.set(metricSlug, bucket);
+      }
+
+      // Convert to WeeklyProgress format
+      const weeklyProgress: WeeklyProgress[] = [];
+      for (const [metricSlug, bucket] of byMetric) {
+        if (bucket.values.length > 0) {
+          const numericValues = bucket.values
+            .map((v: any) => typeof v.value === 'number' ? v.value : null)
+            .filter((v: any) => v !== null) as number[];
+          
+          const currentAvg = numericValues.length > 0 
+            ? numericValues.reduce((sum, val) => sum + val, 0) / numericValues.length 
+            : null;
+
+          weeklyProgress.push({
+            metric_name: bucket.metric_name,
+            current_avg: currentAvg,
+            target_value: null, // We don't have target values in this fallback
+            progress_percent: null
+          });
+        }
+      }
+
+      return weeklyProgress;
+    } catch (error) {
+      logError('getWeeklyProgress.fallback', error, { userId: session.user.id });
       return [];
     }
-
-    // Aggregate by metric_slug
-    const byMetric = new Map<string, any>();
-    for (const row of measurements || []) {
-      const metricDef = row.metric_definitions as any;
-      const metricSlug = metricDef.slug;
-      const bucket = byMetric.get(metricSlug) ?? { 
-        metric_slug: metricSlug, 
-        metric_name: metricDef.name,
-        values: [] as any[] 
-      };
-      
-      const value = row.value_numeric ?? row.value_text ?? row.value_bool;
-      if (value !== null) {
-        bucket.values.push({ 
-          date: row.measured_at.split('T')[0], 
-          value 
-        });
-      }
-      
-      byMetric.set(metricSlug, bucket);
-    }
-
-    return Array.from(byMetric.values());
   }
 
   static async updateMetricTarget(sb: SupabaseClient, metricSlug: string, targetValue: number | null): Promise<void> {

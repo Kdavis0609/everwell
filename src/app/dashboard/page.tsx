@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/empty-state';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { WeeklyProgressCard } from '@/components/dashboard/weekly-progress';
 import { WeeklyPlanCard } from '@/components/dashboard/weekly-plan';
+import { HeroStats } from '@/components/dashboard/hero-stats';
 import { ChartContainer } from '@/components/charts';
 import { useMetricsSetup } from '@/lib/hooks/use-metrics-setup';
 import { MetricsService } from '@/lib/services/metrics-service';
@@ -19,13 +20,18 @@ import { InsightsService } from '@/lib/services/insights-service';
 import { ensureProfile, getProfile } from '@/lib/services/profile-service';
 import { UserEnabledMetric, MetricValue, MeasurementWithDefinition, WeeklyProgress, AIInsight } from '@/lib/types';
 import type { Profile } from '@/lib/types/profile';
-import { TrendingUp, Plus, Activity, Settings } from 'lucide-react';
+import { TrendingUp, Plus, Activity, Settings, Clock } from 'lucide-react';
 import Link from 'next/link';
 import { MigrationRequired } from '@/components/migration-required';
+import { formatDate } from '@/lib/utils/date';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { logError } from '@/lib/errors';
 
 export default function DashboardPage() {
   const { loading: setupLoading, hasConfiguredMetrics } = useMetricsSetup();
   const [loading, setLoading] = useState(true);
+
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -47,8 +53,29 @@ export default function DashboardPage() {
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
 
+  // Recent entries sorting state
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [entriesLimit, setEntriesLimit] = useState(10);
+  const [selectedMetricFilter, setSelectedMetricFilter] = useState<string>('all');
+  
+  // Save state management
+  const [hasChanges, setHasChanges] = useState(false);
+  const [savedState, setSavedState] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Hero stats state
+  const [heroStats, setHeroStats] = useState({
+    weeklyAvg: null as number | null,
+    weightDelta: null as number | null,
+    sleepAvg: null as number | null,
+    currentStreak: 0
+  });
+
   // Load the current user, their profile, and enabled metrics
   useEffect(() => {
+    let cancelled = false;
+    
     const load = async () => {
       setLoading(true);
       setErr(null);
@@ -56,9 +83,10 @@ export default function DashboardPage() {
       const supabase = createSupabaseBrowser();
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr || !userData.user) {
-        setErr('Not signed in. Redirecting to login…');
-        setTimeout(() => (window.location.href = '/login'), 800);
-        setLoading(false);
+        if (!cancelled) {
+          setErr('Authentication error. Please try refreshing the page.');
+          setLoading(false);
+        }
         return;
       }
 
@@ -67,43 +95,41 @@ export default function DashboardPage() {
 
       // Load user profile
       try {
-        let profile = await getProfile(supabase);
-        
-        if (!profile) {
-          // No profile found - create one automatically
-          console.log('No profile found for user, creating one automatically');
-          await ensureProfile(supabase);
-          profile = await getProfile(supabase);
+        const profile = await getProfile(supabase);
+        if (!cancelled && profile) {
+          setProfile(profile);
         }
-        
-        setProfile(profile);
       } catch (error) {
-        console.error('Profile loading error:', error);
-        toast.error('Failed to load user profile. Please try refreshing the page.');
+        logError('[getProfile.query]', error);
+        if (!cancelled) {
+          toast.error('Authentication error. Please sign in again.');
+        }
       }
 
       // Load enabled metrics and recent measurements
       try {
-        await Promise.all([
-          loadEnabledMetrics(supabase),
-          loadRecentMeasurements(supabase),
-          loadTodaysMeasurements(supabase),
-          loadWeeklyData(supabase)
-        ]);
+        await loadEnabledMetrics(supabase);
+        await loadRecentMeasurements(supabase);
+        await loadTodaysMeasurements(supabase);
+        await loadWeeklyData(supabase);
+        await calculateHeroStats(supabase);
       } catch (error) {
-        console.error('Error loading metrics data:', error);
-        // Check if this is a database migration issue
-        if (error instanceof Error && error.message.includes('relation "metric_definitions" does not exist')) {
-          setErr('Database migration required. Please run the metrics customization migration in Supabase.');
-        } else {
-          setErr('Failed to load metrics data. Please try refreshing the page.');
+        logError('[dashboard.load]', error);
+        if (!cancelled) {
+          setErr('Failed to load dashboard data. Please try refreshing the page.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
         }
       }
-
-      setLoading(false);
     };
 
     load();
+    
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const loadEnabledMetrics = async (supabase: any) => {
@@ -125,8 +151,16 @@ export default function DashboardPage() {
 
   const loadRecentMeasurements = async (supabase: any) => {
     try {
-      const measurements = await MetricsService.getRecentMeasurements(supabase, 10);
-      setRecentMeasurements(measurements);
+      const measurements = await MetricsService.getRecentMeasurements(supabase, entriesLimit);
+      // Apply current sort order
+      const sorted = [...measurements].sort((a, b) => {
+        if (sortOrder === 'newest') {
+          return new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime();
+        } else {
+          return new Date(a.measured_at).getTime() - new Date(b.measured_at).getTime();
+        }
+      });
+      setRecentMeasurements(sorted);
     } catch (error) {
       console.error('Error loading recent measurements:', error);
       throw error;
@@ -138,24 +172,8 @@ export default function DashboardPage() {
       const measurements = await MetricsService.getTodaysMeasurements(supabase);
       setTodaysMeasurements(measurements);
       
-      // Pre-fill form with today's measurements
-      const todayValues: Record<string, any> = {};
-      measurements.forEach(measurement => {
-        // Handle blood pressure specially - reconstruct object from stored values
-        if (measurement.metric_definitions.slug === 'blood_pressure' && measurement.value_numeric !== null && measurement.value_text !== null) {
-          todayValues[measurement.metric_definitions.slug] = {
-            systolic: measurement.value_numeric,
-            diastolic: parseFloat(measurement.value_text)
-          };
-        } else if (measurement.value_numeric !== null) {
-          todayValues[measurement.metric_definitions.slug] = measurement.value_numeric;
-        } else if (measurement.value_text !== null) {
-          todayValues[measurement.metric_definitions.slug] = measurement.value_text;
-        } else if (measurement.value_bool !== null) {
-          todayValues[measurement.metric_definitions.slug] = measurement.value_bool;
-        }
-      });
-      setForm(prev => ({ ...prev, ...todayValues }));
+      // WHY: Don't pre-fill form with today's measurements - start with blank fields
+      // The form will be initialized with null values in loadEnabledMetrics
     } catch (error) {
       console.error('Error loading today\'s measurements:', error);
       throw error;
@@ -171,16 +189,118 @@ export default function DashboardPage() {
       setWeeklyProgress(progress);
       
       // Load weekly plan (get last Monday's plan)
-      const { data: lastMonday } = await supabase.rpc('get_last_monday');
-      if (lastMonday) {
-        const plan = await InsightsService.getAIInsight(supabase, lastMonday);
-        setWeeklyPlan(plan);
+      try {
+        const { data: lastMonday } = await supabase.rpc('get_last_monday');
+        if (lastMonday) {
+          const plan = await InsightsService.getAIInsight(supabase, lastMonday);
+          setWeeklyPlan(plan);
+        }
+      } catch (planError) {
+        console.error('Error loading weekly plan:', planError);
+        // Weekly plan is optional - don't break the dashboard
       }
     } catch (error) {
       console.error('Error loading weekly data:', error);
       // Don't throw error for weekly data - it's optional
+      setWeeklyProgress([]);
     } finally {
       setWeeklyLoading(false);
+    }
+  };
+
+  const calculateHeroStats = async (supabase: any) => {
+    if (!userId) return;
+    
+    try {
+      // Get last 7 days of measurements
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7);
+
+      const { data: measurements, error } = await supabase
+        .from('measurements')
+        .select(`
+          measured_at,
+          value_numeric,
+          metric_definitions!inner(
+            slug,
+            name
+          )
+        `)
+        .eq('user_id', userId)
+        .gte('measured_at', startDate.toISOString())
+        .lte('measured_at', endDate.toISOString())
+        .order('measured_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching measurements for hero stats:', error);
+        return;
+      }
+
+      if (!measurements || measurements.length === 0) {
+        console.log('No measurements found for hero stats');
+        return;
+      }
+
+      // Calculate weekly average (all numeric metrics)
+      const numericValues = measurements
+        .filter((m: any) => m.value_numeric !== null)
+        .map((m: any) => m.value_numeric);
+      const weeklyAvg = numericValues.length > 0 
+        ? numericValues.reduce((sum: number, val: number) => sum + val, 0) / numericValues.length 
+        : null;
+
+      // Calculate weight delta (comparing first and last weight entries)
+      const weightMeasurements = measurements
+        .filter((m: any) => m.metric_definitions.slug === 'weight')
+        .sort((a: any, b: any) => new Date(a.measured_at).getTime() - new Date(b.measured_at).getTime());
+      
+      let weightDelta = null;
+      if (weightMeasurements.length >= 2) {
+        const firstWeight = weightMeasurements[0].value_numeric;
+        const lastWeight = weightMeasurements[weightMeasurements.length - 1].value_numeric;
+        weightDelta = lastWeight - firstWeight;
+      }
+
+      // Calculate sleep average
+      const sleepMeasurements = measurements
+        .filter((m: any) => m.metric_definitions.slug === 'sleep_hours')
+        .map((m: any) => m.value_numeric);
+      const sleepAvg = sleepMeasurements.length > 0 
+        ? sleepMeasurements.reduce((sum: number, val: number) => sum + val, 0) / sleepMeasurements.length 
+        : null;
+
+      // Calculate current streak (consecutive days with any measurement)
+      const uniqueDays = new Set(
+        measurements.map((m: any) => m.measured_at.split('T')[0])
+      );
+      const sortedDays = Array.from(uniqueDays).sort().reverse();
+      
+      let currentStreak = 0;
+      const today = new Date().toISOString().split('T')[0];
+      let checkDate = today;
+      
+      for (let i = 0; i < 30; i++) { // Check up to 30 days back
+        const dateStr = new Date(checkDate).toISOString().split('T')[0];
+        if (sortedDays.includes(dateStr)) {
+          currentStreak++;
+          // Move to previous day
+          const prevDate = new Date(checkDate);
+          prevDate.setDate(prevDate.getDate() - 1);
+          checkDate = prevDate.toISOString().split('T')[0];
+        } else {
+          break;
+        }
+      }
+
+      setHeroStats({
+        weeklyAvg,
+        weightDelta,
+        sleepAvg,
+        currentStreak
+      });
+    } catch (error) {
+      console.error('Error calculating hero stats:', error);
     }
   };
 
@@ -189,6 +309,17 @@ export default function DashboardPage() {
       ...prev,
       [metricSlug]: value
     }));
+    setHasChanges(true);
+    setSavedState(false);
+  };
+
+  const handleInputFocus = () => {
+    setIsInputFocused(true);
+  };
+
+  const handleInputBlur = () => {
+    // Delay hiding the sticky bar to allow for save button clicks
+    setTimeout(() => setIsInputFocused(false), 100);
   };
 
   const generateWeeklyPlan = async () => {
@@ -200,6 +331,7 @@ export default function DashboardPage() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // WHY: Include authentication cookies
       });
 
       if (!response.ok) {
@@ -246,6 +378,7 @@ export default function DashboardPage() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // WHY: Include authentication cookies
       });
 
       const result = await response.json();
@@ -277,6 +410,7 @@ export default function DashboardPage() {
     
     setSaving(true);
     setErr(null);
+    setFieldErrors({});
 
     try {
       const supabase = createSupabaseBrowser();
@@ -295,7 +429,12 @@ export default function DashboardPage() {
           switch (metric.input_kind) {
             case 'number':
             case 'integer':
-              measurement.value_numeric = parseFloat(value);
+              const numValue = parseFloat(value);
+              if (isNaN(numValue)) {
+                setFieldErrors(prev => ({ ...prev, [metric.slug]: 'Please enter a valid number' }));
+                return null;
+              }
+              measurement.value_numeric = numValue;
               break;
             case 'text':
               measurement.value_text = value;
@@ -330,7 +469,17 @@ export default function DashboardPage() {
 
       await MetricsService.saveTodayMeasurements(supabase, measurements);
       
-      toast.success('Today\'s metrics saved successfully!');
+      // Success notification with details
+      const savedCount = measurements.length;
+      const metricNames = measurements.map(m => {
+        const metric = enabledMetrics.find(em => em.slug === m.slug);
+        return metric?.name || m.slug;
+      }).join(', ');
+      
+      toast.success(`Saved ${savedCount} metric${savedCount > 1 ? 's' : ''}: ${metricNames}`, {
+        description: 'Your health data has been recorded successfully!',
+        duration: 4000
+      });
       
       // Clear form and reload data
       const initialForm: Record<string, any> = {};
@@ -338,16 +487,26 @@ export default function DashboardPage() {
         initialForm[metric.slug] = null;
       });
       setForm(initialForm);
+      setHasChanges(false);
+      setSavedState(true);
+      
+      // Auto-hide saved state after 3 seconds
+      setTimeout(() => setSavedState(false), 3000);
       
       await Promise.all([
         loadRecentMeasurements(supabase),
         loadTodaysMeasurements(supabase),
-        loadWeeklyData(supabase)
+        loadWeeklyData(supabase),
+        calculateHeroStats(supabase)
       ]);
     } catch (error) {
       console.error('Error saving metrics:', error);
-      setErr(error instanceof Error ? error.message : 'Failed to save metrics');
-      toast.error('Failed to save metrics');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save metrics';
+      setErr(errorMessage);
+      toast.error('Failed to save metrics', {
+        description: errorMessage,
+        duration: 5000
+      });
     } finally {
       setSaving(false);
     }
@@ -360,7 +519,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="flex items-center space-x-2">
             <LoadingSpinner size={20} />
-            <span className="text-muted-foreground">Loading...</span>
+            <span className="text-gray-600">Loading...</span>
           </div>
         </div>
       </AppShell>
@@ -377,7 +536,7 @@ export default function DashboardPage() {
               <Settings className="w-8 h-8 text-primary-foreground" />
             </div>
             <h2 className="text-xl font-semibold">Setup Required</h2>
-            <p className="text-muted-foreground max-w-md">
+            <p className="text-gray-600 max-w-md">
               You need to configure which health metrics you'd like to track. 
               This will only take a moment.
             </p>
@@ -401,217 +560,352 @@ export default function DashboardPage() {
     );
   }
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    } else {
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric',
+        year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+      });
+    }
+  };
+
+  // Get unique metrics from recent measurements for filtering
+  const getAvailableMetricsForFilter = () => {
+    const uniqueMetrics = new Map<string, string>();
+    recentMeasurements.forEach(measurement => {
+      const metricName = MetricsService.getMeasurementDisplayName(measurement);
+      const metricSlug = measurement.metric_definitions.slug;
+      uniqueMetrics.set(metricSlug, metricName);
+    });
+    return Array.from(uniqueMetrics.entries()).map(([slug, name]) => ({ slug, name }));
+  };
+
+  // Filter and sort measurements
+  const getFilteredAndSortedMeasurements = () => {
+    let filtered = recentMeasurements;
+    
+    // Apply metric filter
+    if (selectedMetricFilter !== 'all') {
+      filtered = filtered.filter(measurement => 
+        measurement.metric_definitions.slug === selectedMetricFilter
+      );
+    }
+    
+    // Apply sort order
+    return filtered.sort((a, b) => {
+      if (sortOrder === 'newest') {
+        return new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime();
+      } else {
+        return new Date(a.measured_at).getTime() - new Date(b.measured_at).getTime();
+      }
+    });
+  };
+
   return (
     <AppShell>
-      {err && (
-        <div className="mb-6 p-4 rounded-lg bg-destructive/10 border border-destructive/20">
-          <p className="text-destructive text-sm">{err}</p>
-        </div>
-      )}
-
-      {!err && (
-        <div className="space-y-6">
-          {/* Weekly Progress and Plan Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <WeeklyProgressCard 
-              weeklyProgress={weeklyProgress} 
-              loading={weeklyLoading} 
-            />
-            <WeeklyPlanCard 
-              weeklyPlan={weeklyPlan}
-              onRegenerate={generateWeeklyPlan}
-              loading={weeklyLoading}
-            />
+      <div className="px-6 py-6">
+        {err && (
+          <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200">
+            <p className="text-red-600 text-sm">{err}</p>
           </div>
+        )}
 
-          {/* AI Insights Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <TrendingUp className="h-5 w-5" />
-                <span>AI Health Insights</span>
-              </CardTitle>
-              <CardDescription>
-                Get personalized insights and recommendations based on your health data
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {insightsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <LoadingSpinner className="mr-2" />
-                  <span>Generating insights...</span>
-                </div>
-              ) : insightsError ? (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
-                    <p className="text-destructive text-sm">{insightsError}</p>
-                  </div>
-                  <Button onClick={generateInsights} disabled={insightsLoading}>
-                    Try Again
-                  </Button>
-                </div>
-              ) : insights ? (
-                <div className="space-y-6">
-                  {/* Summary */}
-                  <div>
-                    <h4 className="font-medium mb-2">Summary</h4>
-                    <p className="text-sm text-muted-foreground">{insights.insights.summary}</p>
-                  </div>
-                  
-                  {/* Recommendations */}
-                  {insights.insights.recommendations && insights.insights.recommendations.length > 0 && (
-                    <div>
-                      <h4 className="font-medium mb-2">Recommendations</h4>
-                      <ul className="space-y-1">
-                        {insights.insights.recommendations.map((rec: string, index: number) => (
-                          <li key={`rec-${index}-${rec.substring(0, 20)}`} className="text-sm text-muted-foreground flex items-start">
-                            <span className="mr-2">•</span>
-                            {rec}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  
-                  {/* Observations */}
-                  {insights.insights.observations && insights.insights.observations.length > 0 && (
-                    <div>
-                      <h4 className="font-medium mb-2">Observations</h4>
-                      <ul className="space-y-1">
-                        {insights.insights.observations.map((obs: string, index: number) => (
-                          <li key={`obs-${index}-${obs.substring(0, 20)}`} className="text-sm text-muted-foreground flex items-start">
-                            <span className="mr-2">•</span>
-                            {obs}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  
-                  <Button onClick={generateInsights} disabled={insightsLoading}>
-                    Regenerate Insights
-                  </Button>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground mb-4">
-                    Generate personalized insights based on your health data
-                  </p>
-                  <Button onClick={generateInsights} disabled={insightsLoading}>
-                    Generate Insights
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Trend Charts Section */}
-          {userId && enabledMetrics.length > 0 && (
-            <ChartContainer 
-              userId={userId}
-              enabledMetrics={enabledMetrics}
+        {!err && (
+          <>
+            {/* Hero Stats Overview */}
+            <HeroStats 
+              weeklyAvg={heroStats.weeklyAvg}
+              weightDelta={heroStats.weightDelta}
+              sleepAvg={heroStats.sleepAvg}
+              currentStreak={heroStats.currentStreak}
             />
-          )}
 
-          {/* Today's Metrics and Recent Entries Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left: Today's Metrics Card */}
-            <div className="lg:col-span-8">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <Activity className="h-5 w-5" />
-                    <span>Today's Metrics</span>
-                  </CardTitle>
-                  <CardDescription>
-                    Track your daily health data ({enabledMetrics.length} metrics enabled)
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {enabledMetrics.length === 0 ? (
-                    <EmptyState 
-                      icon={Activity} 
-                      message="No metrics enabled. Configure your metrics in settings." 
-                    />
-                  ) : (
-                    <form onSubmit={(e) => { e.preventDefault(); saveMetrics(); }} className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {enabledMetrics.map((metric) => {
-                          return (
-                            <div key={metric.slug ?? metric.id} className={metric.input_kind === 'text' ? 'md:col-span-2' : ''}>
-                              <MetricInput
-                                key={metric.slug ?? metric.id}
-                                metric={metric}
-                                value={form[metric.slug]}
-                                onChange={(value) => handleMetricChange(metric.slug, value)}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <SubmitBar>
-                        <Button type="submit" disabled={saving}>
-                          {saving ? (
-                            <>
-                              <LoadingSpinner className="mr-2" />
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <Plus className="mr-2 h-4 w-4" />
-                              Save Today's Metrics
-                            </>
-                          )}
-                        </Button>
-                      </SubmitBar>
-                    </form>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-            
-            {/* Right: Recent Measurements */}
-            <div className="lg:col-span-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <TrendingUp className="h-5 w-5" />
-                    <span>Recent Entries</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {recentMeasurements.length === 0 ? (
-                    <EmptyState 
-                      icon={Activity} 
-                      message="No measurements logged yet. Start tracking your health today!" 
-                    />
-                  ) : (
-                    <div className="space-y-3">
-                      {recentMeasurements.map((measurement) => (
-                        <div key={measurement.id} className="p-3 rounded-lg border">
-                          <div className="flex items-start justify-between">
+            <div className="space-y-6">
+              {/* Weekly Progress and Plan Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <WeeklyProgressCard 
+                  weeklyProgress={weeklyProgress} 
+                  loading={weeklyLoading} 
+                />
+                <WeeklyPlanCard 
+                  weeklyPlan={weeklyPlan}
+                  onRegenerate={generateWeeklyPlan}
+                  loading={weeklyLoading}
+                />
+              </div>
+
+              {/* Main Content - Two Column Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left Column */}
+                <div className="space-y-6">
+                  {/* Today's Metrics Card */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center space-x-2">
+                        <Activity className="h-5 w-5" />
+                        <span>Today's Metrics</span>
+                      </CardTitle>
+                      <CardDescription>
+                        Track your daily health data ({enabledMetrics.length} metrics enabled)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {enabledMetrics.length === 0 ? (
+                        <EmptyState 
+                          icon={Activity} 
+                          title="No Metrics Configured"
+                          message="Configure your metrics in settings to start tracking your health data."
+                          variant="illustration"
+                          action={
+                            <Button asChild>
+                              <Link href="/settings/metrics">
+                                Configure Metrics
+                              </Link>
+                            </Button>
+                          }
+                        />
+                      ) : (
+                        <form onSubmit={(e) => { e.preventDefault(); saveMetrics(); }} className="space-y-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {enabledMetrics.map((metric) => {
+                              return (
+                                <div key={metric.slug ?? metric.id} className={metric.input_kind === 'text' ? 'md:col-span-2' : ''}>
+                                  <MetricInput
+                                    key={metric.slug ?? metric.id}
+                                    metric={metric}
+                                    value={form[metric.slug]}
+                                    onChange={(value) => handleMetricChange(metric.slug, value)}
+                                    onFocus={handleInputFocus}
+                                    onBlur={handleInputBlur}
+                                    error={fieldErrors[metric.slug]}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <SubmitBar 
+                            hasChanges={hasChanges} 
+                            savedState={savedState} 
+                            onSave={saveMetrics} 
+                            isInputFocused={isInputFocused}
+                          />
+                        </form>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* AI Insights Card */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center space-x-2">
+                        <TrendingUp className="h-5 w-5" />
+                        <span>AI Health Insights</span>
+                      </CardTitle>
+                      <CardDescription>
+                        Get personalized insights and recommendations based on your health data
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {insightsLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <LoadingSpinner className="mr-2" />
+                          <span>Generating insights...</span>
+                        </div>
+                      ) : insightsError ? (
+                        <div className="space-y-4">
+                          <div className="p-4 rounded-2xl bg-red-50 border border-red-200">
+                            <p className="text-red-600 text-sm">{insightsError}</p>
+                          </div>
+                          <Button onClick={generateInsights} disabled={insightsLoading}>
+                            Try Again
+                          </Button>
+                        </div>
+                      ) : insights ? (
+                        <div className="space-y-6">
+                          {/* Summary */}
+                          <div>
+                            <h4 className="font-medium mb-2 text-gray-900">Summary</h4>
+                            <p className="text-sm text-gray-700">{insights.insights.summary}</p>
+                          </div>
+                          
+                          {/* Recommendations */}
+                          {insights.insights.recommendations && insights.insights.recommendations.length > 0 && (
                             <div>
-                              <div className="font-medium text-sm">
-                                {MetricsService.getMeasurementDisplayName(measurement)}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                {MetricsService.formatMeasurementValue(measurement)}
-                              </div>
+                              <h4 className="font-medium mb-2 text-gray-900">Recommendations</h4>
+                              <ul className="space-y-1">
+                                {insights.insights.recommendations.map((rec: string, index: number) => (
+                                  <li key={`rec-${index}-${rec.substring(0, 20)}`} className="text-sm text-gray-700 flex items-start">
+                                    <span className="mr-2">•</span>
+                                    {rec}
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {new Date(measurement.measured_at).toLocaleDateString()}
+                          )}
+                          
+                          {/* Observations */}
+                          {insights.insights.observations && insights.insights.observations.length > 0 && (
+                            <div>
+                              <h4 className="font-medium mb-2 text-gray-900">Observations</h4>
+                              <ul className="space-y-1">
+                                {insights.insights.observations.map((obs: string, index: number) => (
+                                  <li key={`obs-${index}-${obs.substring(0, 20)}`} className="text-sm text-gray-700 flex items-start">
+                                    <span className="mr-2">•</span>
+                                    {obs}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          <Button onClick={generateInsights} disabled={insightsLoading}>
+                            Regenerate Insights
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <p className="text-gray-600 mb-4">
+                            Generate AI-powered insights based on your health data patterns
+                          </p>
+                          <Button onClick={generateInsights} disabled={insightsLoading}>
+                            Generate Insights
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Right Column */}
+                <div className="space-y-6">
+                  {/* Trend Charts Section */}
+                  {userId && enabledMetrics.length > 0 && (
+                    <ChartContainer 
+                      userId={userId}
+                      enabledMetrics={enabledMetrics}
+                    />
+                  )}
+
+                  {/* Recent Entries Card */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center space-x-2">
+                        <Clock className="h-5 w-5" />
+                        <span>Recent Entries</span>
+                      </CardTitle>
+                      <CardDescription>
+                        Your latest health measurements
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {recentMeasurements.length === 0 ? (
+                        <EmptyState 
+                          icon={Clock} 
+                          title="No Recent Entries"
+                          message="Start tracking your health metrics to see your recent entries here."
+                          variant="illustration"
+                          action={
+                            <Button onClick={() => document.getElementById('today-metrics')?.scrollIntoView({ behavior: 'smooth' })}>
+                              Add Today's Metrics
+                            </Button>
+                          }
+                        />
+                      ) : (
+                        <div className="space-y-4">
+                          {/* Sort and Filter Controls */}
+                          <div className="flex flex-wrap gap-2 items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <Select value={sortOrder} onValueChange={(value: string) => setSortOrder(value as 'newest' | 'oldest')}>
+                                <SelectTrigger className="w-32 h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="newest">Newest First</SelectItem>
+                                  <SelectItem value="oldest">Oldest First</SelectItem>
+                                </SelectContent>
+                              </Select>
+
+                              <Select value={selectedMetricFilter} onValueChange={setSelectedMetricFilter}>
+                                <SelectTrigger className="w-32 h-8 text-xs">
+                                  <SelectValue placeholder="All Metrics" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="all">All Metrics</SelectItem>
+                                  {getAvailableMetricsForFilter().map((metric) => (
+                                    <SelectItem key={metric.slug} value={metric.slug}>
+                                      {metric.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+
+                              {selectedMetricFilter !== 'all' && (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  onClick={() => setSelectedMetricFilter('all')}
+                                  className="h-8 text-xs"
+                                >
+                                  Clear Filter
+                                </Button>
+                              )}
                             </div>
                           </div>
+
+                          {/* Entries List */}
+                          <div className="max-h-96 overflow-y-auto space-y-2">
+                            {getFilteredAndSortedMeasurements().slice(0, entriesLimit).map((measurement, index) => (
+                              <div key={`${measurement.id}-${index}`} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                                <div className="flex items-center space-x-3">
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {MetricsService.getMeasurementDisplayName(measurement)}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      {formatDate(measurement.measured_at)}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {measurement.value_numeric} {measurement.metric_definitions.unit}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Load More Button */}
+                          {getFilteredAndSortedMeasurements().length > entriesLimit && (
+                            <div className="text-center pt-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => setEntriesLimit(prev => prev + 10)}
+                              >
+                                Load More
+                              </Button>
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </AppShell>
   );
 }

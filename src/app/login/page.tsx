@@ -1,9 +1,9 @@
 // src/app/login/page.tsx
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,12 @@ import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { Heart, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 import { LoadingSpinner } from '@/components/loading-spinner';
+import { parseRedirectTo } from '@/lib/utils/redirect';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { loading: authGuardLoading } = useAuthGuard();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('magic-link');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -30,17 +30,21 @@ export default function LoginPage() {
     rememberMe: false
   });
 
-  // Show loading while checking auth
-  if (authGuardLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-green-50 p-4">
-        <div className="flex items-center space-x-2">
-          <LoadingSpinner size={20} />
-          <span className="text-muted-foreground">Loading...</span>
-        </div>
-      </div>
-    );
-  }
+  // Create Supabase client
+  const supabase = createSupabaseBrowser();
+
+  // Handle auth state changes for redirects
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        const redirectTo = searchParams.get('redirectTo');
+        const safeRedirectTo = parseRedirectTo(redirectTo);
+        router.push(safeRedirectTo);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [router, searchParams, supabase.auth]);
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({
@@ -84,7 +88,11 @@ export default function LoginPage() {
         }
 
         toast.success('Signed in successfully!');
-        router.push('/dashboard');
+        
+        // Redirect will be handled by onAuthStateChange
+        const redirectTo = searchParams.get('redirectTo');
+        const safeRedirectTo = parseRedirectTo(redirectTo);
+        router.push(safeRedirectTo);
       }
     } catch (error) {
       console.error('Sign in error:', error);

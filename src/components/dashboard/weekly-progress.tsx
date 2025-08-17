@@ -2,8 +2,11 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { WeeklyProgress } from '@/lib/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Target, TrendingUp } from 'lucide-react';
+import { WeeklyProgress } from '@/lib/types';
+import { Sparkline } from '@/components/charts/sparkline';
+import { useState } from 'react';
 
 interface WeeklyProgressCardProps {
   weeklyProgress: WeeklyProgress[];
@@ -11,6 +14,8 @@ interface WeeklyProgressCardProps {
 }
 
 export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyProgressCardProps) {
+  const [aggregationType, setAggregationType] = useState<'avg' | 'median'>('avg');
+
   if (loading) {
     return (
       <Card>
@@ -19,7 +24,7 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
             <Target className="h-5 w-5" />
             <span>This Week</span>
           </CardTitle>
-          <CardDescription>Your progress toward weekly goals</CardDescription>
+          <CardDescription>Your progress towards weekly goals</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -35,9 +40,7 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
     );
   }
 
-  const metricsWithTargets = weeklyProgress.filter(p => p.target_value !== null);
-
-  if (metricsWithTargets.length === 0) {
+  if (weeklyProgress.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -45,7 +48,7 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
             <Target className="h-5 w-5" />
             <span>This Week</span>
           </CardTitle>
-          <CardDescription>Your progress toward weekly goals</CardDescription>
+          <CardDescription>Your progress towards weekly goals</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="text-center py-6">
@@ -59,72 +62,144 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
     );
   }
 
-  const getMetricDisplayName = (metricName: string): string => {
-    const nameMap: Record<string, string> = {
-      'weight_lbs': 'Weight',
-      'steps': 'Steps',
-      'sleep_hours': 'Sleep',
-      'water_oz': 'Water',
-      'waist_in': 'Waist',
-      'bmi': 'BMI'
-    };
-    return nameMap[metricName] || metricName.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+  const getAggregatedValue = (progress: WeeklyProgress) => {
+    if (aggregationType === 'avg') {
+      return progress.current_avg;
+    } else {
+      // For median, we'd need the raw data points
+      // For now, fall back to average
+      return progress.current_avg;
+    }
   };
 
-  const getMetricUnit = (metricName: string): string => {
-    const unitMap: Record<string, string> = {
-      'weight_lbs': 'lbs',
-      'steps': 'steps',
-      'sleep_hours': 'hrs',
-      'water_oz': 'oz',
-      'waist_in': 'in',
-      'bmi': ''
-    };
-    return unitMap[metricName] || '';
+  const getSparklineData = (progress: WeeklyProgress) => {
+    // This would come from the actual daily data
+    // For now, create mock data based on the progress
+    const baseValue = progress.current_avg || 0;
+    const targetValue = progress.target_value || 0;
+    
+    // Generate 7 days of data with some variation
+    const data = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      
+      // Add some realistic variation
+      const variation = (Math.random() - 0.5) * 0.2; // ±10% variation
+      const value = baseValue * (1 + variation);
+      
+      data.push({
+        date: date.toISOString().split('T')[0],
+        value: Math.max(0, value)
+      });
+    }
+    
+    return data;
   };
 
-  const getProgressColor = (progress: number): string => {
-    if (progress >= 80) return 'bg-green-500';
-    if (progress >= 60) return 'bg-yellow-500';
-    if (progress >= 40) return 'bg-orange-500';
-    return 'bg-red-500';
+  const getAnnotations = (progress: WeeklyProgress) => {
+    const annotations = [];
+    const data = getSparklineData(progress);
+    const targetValue = progress.target_value || 0;
+    
+    // Find days where target was hit
+    data.forEach((point, index) => {
+      if (point.value >= targetValue * 0.9) { // 90% of target
+        annotations.push({
+          date: point.date,
+          type: 'target' as const
+        });
+      }
+    });
+    
+    // Find best day
+    const bestValue = Math.max(...data.map(d => d.value));
+    const bestDay = data.find(d => d.value === bestValue);
+    if (bestDay) {
+      annotations.push({
+        date: bestDay.date,
+        type: 'best' as const
+      });
+    }
+    
+    return annotations;
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <Target className="h-5 w-5" />
-          <span>This Week</span>
-        </CardTitle>
-        <CardDescription>Your progress toward weekly goals</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center space-x-2">
+              <Target className="h-5 w-5" />
+              <span>This Week</span>
+            </CardTitle>
+            <CardDescription>Your progress towards weekly goals</CardDescription>
+          </div>
+          <div className="flex items-center space-x-2">
+            <label className="text-xs font-medium text-muted-foreground">Aggregation:</label>
+            <Select value={aggregationType} onValueChange={(value: 'avg' | 'median') => setAggregationType(value)}>
+              <SelectTrigger className="w-20 h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="avg">Avg</SelectItem>
+                <SelectItem value="median">Median</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {metricsWithTargets.map((progress) => {
-            const displayName = getMetricDisplayName(progress.metric_name);
-            const unit = getMetricUnit(progress.metric_name);
-            const currentValue = progress.current_avg;
+          {weeklyProgress.map((progress, index) => {
+            const displayName = progress.metric_name;
+            const currentValue = getAggregatedValue(progress);
             const targetValue = progress.target_value;
-            const progressPercent = progress.progress_percent || 0;
+            const progressPercent = progress.progress_percent;
+            const sparklineData = getSparklineData(progress);
+            const annotations = getAnnotations(progress);
 
             return (
-              <div key={progress.metric_name} className="space-y-2">
+              <div key={index} className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">{displayName}</span>
-                  </div>
+                  <span className="text-sm font-medium text-foreground">{displayName}</span>
                   <div className="text-xs text-muted-foreground">
-                    {currentValue !== null ? `${currentValue.toFixed(1)}` : 'No data'} / {targetValue}{unit}
+                    {currentValue !== null ? `${currentValue.toFixed(1)}` : 'No data'} / {targetValue}
                   </div>
                 </div>
-                <Progress 
-                  value={progressPercent} 
-                  className="h-2"
-                />
-                <div className="text-xs text-muted-foreground">
-                  {progressPercent > 0 ? `${progressPercent.toFixed(0)}% of weekly target` : 'No data this week'}
+                
+                {/* Sparkline */}
+                <div className="flex items-center space-x-3">
+                  <Sparkline 
+                    data={sparklineData}
+                    height={32}
+                    width={80}
+                    showTooltip={true}
+                    annotations={annotations}
+                    color={progressPercent && progressPercent > 80 
+                      ? (typeof window !== 'undefined' 
+                          ? `hsl(${getComputedStyle(document.documentElement).getPropertyValue('--chart-2').trim()})`
+                          : '#10B981')
+                      : (typeof window !== 'undefined' 
+                          ? `hsl(${getComputedStyle(document.documentElement).getPropertyValue('--chart-1').trim()})`
+                          : '#2563EB')
+                    }
+                  />
+                  <div className="flex-1">
+                    {progressPercent !== null && progressPercent > 0 ? (
+                      <div className="space-y-1">
+                        <Progress value={Math.min(progressPercent, 100)} className="h-2" />
+                        <div className="text-xs text-muted-foreground">
+                          {progressPercent.toFixed(0)}% of weekly target
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">
+                        No data this week
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );

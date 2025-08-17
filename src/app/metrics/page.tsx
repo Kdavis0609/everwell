@@ -1,19 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { toast } from 'sonner';
-import { AppShell } from '@/components/app-shell';
+import { useState, useEffect } from 'react';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Heart, Plus, TrendingUp, Activity } from 'lucide-react';
+import { toast } from 'sonner';
+import { LoadingSpinner } from '@/components/loading-spinner';
+import { MetricsService } from '@/lib/services/metrics-service';
+import { logError } from '@/lib/logError';
+import { AppShell } from '@/components/app-shell';
 import { FormField } from '@/components/form-field';
 import { SubmitBar } from '@/components/submit-bar';
 import { StatTile } from '@/components/stat-tile';
 import { EmptyState } from '@/components/empty-state';
-import { LoadingSpinner } from '@/components/loading-spinner';
-import { Activity, Plus, TrendingUp } from 'lucide-react';
 
 type MetricRow = {
   id: string;
@@ -44,7 +47,7 @@ export default function MetricsPage() {
       setLoading(true);
       setErrorMsg(null);
 
-      const { data: userData, error: userErr } = await supabase.auth.getUser();
+      const { data: userData, error: userErr } = await createSupabaseBrowser().auth.getUser();
       if (userErr || !userData.user) {
         setErrorMsg('Not signed in. Redirecting to login…');
         setTimeout(() => (window.location.href = '/login'), 800);
@@ -54,7 +57,7 @@ export default function MetricsPage() {
 
       setUserId(userData.user.id);
 
-      const { data, error } = await supabase
+      const { data, error } = await createSupabaseBrowser()
         .from('metrics')
         .select('*')
         .order('date', { ascending: false })
@@ -108,7 +111,7 @@ export default function MetricsPage() {
 
     try {
       // Upsert today's metrics
-      const { error } = await supabase
+      const { error } = await createSupabaseBrowser()
         .from('metrics')
         .upsert([payload], { onConflict: 'metrics_user_date_unique' });
 
@@ -128,7 +131,7 @@ export default function MetricsPage() {
       setNotes('');
 
       // Refresh recent list
-      const { data, error: refErr } = await supabase
+      const { data, error: refErr } = await createSupabaseBrowser()
         .from('metrics')
         .select('*')
         .order('date', { ascending: false })
@@ -243,6 +246,7 @@ export default function MetricsPage() {
                 {recent.length === 0 ? (
                   <EmptyState 
                     icon={Activity} 
+                    title="No Recent Entries"
                     message="No metrics logged yet. Start tracking your health today!" 
                   />
                 ) : (

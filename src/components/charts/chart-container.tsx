@@ -1,138 +1,168 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
-import { createSupabaseBrowser } from '@/lib/supabase/client';
-import { logError } from '@/lib/logError';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendChart } from './trend-chart';
-import { UserEnabledMetric, MeasurementWithDefinition } from '@/lib/types';
+import { TrendingUp, Activity } from 'lucide-react';
+import { UserEnabledMetric } from '@/lib/types';
+import { MetricsService } from '@/lib/services/metrics-service';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 
 interface ChartContainerProps {
   userId: string;
   enabledMetrics: UserEnabledMetric[];
 }
 
-interface ChartDataPoint {
-  date: string;
-  value: number;
-}
-
 export function ChartContainer({ userId, enabledMetrics }: ChartContainerProps) {
   const [selectedMetric, setSelectedMetric] = useState<string>('');
-  const [selectedRange, setSelectedRange] = useState(30);
-  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+  const [selectedRange, setSelectedRange] = useState(7); // Default to 7 days
+  const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [annotations, setAnnotations] = useState<Array<{ date: string; type: 'target' | 'streak' | 'best' }>>([]);
+  const [userSelectedMetric, setUserSelectedMetric] = useState(false); // Track if user manually selected
 
-  // Filter to only numeric metrics that can be charted
-  const chartableMetrics = useMemo(() => {
-    return enabledMetrics.filter(metric => 
-      metric.input_kind === 'number' || metric.input_kind === 'integer'
-    );
-  }, [enabledMetrics]);
-
-  // Get the current metric's unit
-  const currentMetricUnit = useMemo(() => {
-    const metric = chartableMetrics.find(m => m.slug === selectedMetric);
-    return metric?.unit || '';
-  }, [selectedMetric, chartableMetrics]);
-
-  // Get the current metric's display name
-  const currentMetricName = useMemo(() => {
-    const metric = chartableMetrics.find(m => m.slug === selectedMetric);
-    return metric?.name || 'Unknown Metric';
-  }, [selectedMetric, chartableMetrics]);
+  // Set initial metric
+  useEffect(() => {
+    if (enabledMetrics.length > 0 && !selectedMetric && !userSelectedMetric) {
+      setSelectedMetric(enabledMetrics[0].slug);
+    }
+  }, [enabledMetrics, selectedMetric, userSelectedMetric]);
 
   // Load chart data when metric or range changes
   useEffect(() => {
-    if (!userId || !selectedMetric) return;
-
-    const loadChartData = async () => {
-      setLoading(true);
-      try {
-        const supabase = createSupabaseBrowser();
-        
-        // Check authentication
-        const { data: { session }, error: authError } = await supabase.auth.getSession();
-        if (authError || !session) {
-          logError('chart.auth', authError || new Error('No session'), { userId });
-          setChartData([]);
-          return;
-        }
-
-        // Calculate the start date based on selected range
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - selectedRange);
-        const startDateStr = startDate.toISOString().split('T')[0];
-
-        // Fetch measurements for the selected metric and date range
-        const { data: measurements, error } = await supabase
-          .from('measurements')
-          .select(`
-            *,
-            metric_definitions!inner(
-              id,
-              slug,
-              name,
-              unit
-            )
-          `)
-          .eq('user_id', userId)
-          .eq('metric_definitions.slug', selectedMetric)
-          .gte('measured_at', `${startDateStr}T00:00:00`)
-          .lte('measured_at', new Date().toISOString())
-          .order('measured_at', { ascending: true });
-
-        if (error) {
-          logError('chart.fetch', error, { userId, metric: selectedMetric });
-          setChartData([]);
-          return;
-        }
-
-        // Transform the data for the chart
-        const transformedData: ChartDataPoint[] = (measurements as MeasurementWithDefinition[])
-          .filter(m => m.value_numeric !== null)
-          .map(m => ({
-            date: m.measured_at.split('T')[0],
-            value: m.value_numeric!
-          }));
-
-        setChartData(transformedData);
-      } catch (error) {
-        logError('chart.unexpected', error, { userId, metric: selectedMetric });
-        setChartData([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadChartData();
-  }, [userId, selectedMetric, selectedRange]);
-
-  // Set initial metric if none selected and we have chartable metrics
-  useEffect(() => {
-    if (!selectedMetric && chartableMetrics.length > 0) {
-      setSelectedMetric(chartableMetrics[0].slug);
+    if (selectedMetric && userId) {
+      loadChartData();
     }
-  }, [selectedMetric, chartableMetrics]);
+  }, [selectedMetric, selectedRange, userId]);
 
-  if (chartableMetrics.length === 0) {
+  const handleMetricChange = (metricSlug: string) => {
+    setUserSelectedMetric(true); // Mark as user selection
+    setSelectedMetric(metricSlug);
+  };
+
+  const loadChartData = async () => {
+    setLoading(true);
+    try {
+      const supabase = createSupabaseBrowser();
+      
+      const data = await MetricsService.getChartData(supabase, selectedMetric, selectedRange);
+      
+      // Only auto-switch if this is the initial load and no data exists
+      // Don't auto-switch if user manually selected a metric
+      if (data.length === 0 && enabledMetrics.length > 1 && !userSelectedMetric) {
+        // Find first metric with data for initial load
+        for (const metric of enabledMetrics) {
+          const metricData = await MetricsService.getChartData(supabase, metric.slug, selectedRange);
+          if (metricData.length > 0) {
+            setSelectedMetric(metric.slug);
+            setChartData(metricData);
+            
+            // Generate annotations
+            const newAnnotations = generateAnnotations(metricData, metric.slug);
+            setAnnotations(newAnnotations);
+            setLoading(false);
+            return;
+          }
+        }
+      }
+      
+      setChartData(data);
+      
+      // Generate annotations
+      const newAnnotations = generateAnnotations(data, selectedMetric);
+      setAnnotations(newAnnotations);
+    } catch (error) {
+      console.error('Error loading chart data:', error);
+      setChartData([]);
+      setAnnotations([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateAnnotations = (data: any[], metricSlug: string) => {
+    const annotations: Array<{ date: string; type: 'target' | 'streak' | 'best' }> = [];
+    
+    if (data.length === 0) return annotations;
+
+    // Find best day
+    const bestValue = Math.max(...data.map(d => d.value).filter(v => v !== null && !isNaN(v)));
+    const bestDay = data.find(d => d.value === bestValue);
+    if (bestDay) {
+      annotations.push({
+        date: bestDay.date,
+        type: 'best'
+      });
+    }
+
+    // Find target hits (assuming target is 80% of best value for demo)
+    const targetValue = bestValue * 0.8;
+    data.forEach(point => {
+      if (point.value >= targetValue) {
+        annotations.push({
+          date: point.date,
+          type: 'target'
+        });
+      }
+    });
+
+    // Find streaks (3+ consecutive days above average)
+    const avgValue = data.reduce((sum, d) => sum + (d.value || 0), 0) / data.length;
+    let streakCount = 0;
+    data.forEach(point => {
+      if (point.value >= avgValue) {
+        streakCount++;
+        if (streakCount >= 3) {
+          annotations.push({
+            date: point.date,
+            type: 'streak'
+          });
+        }
+      } else {
+        streakCount = 0;
+      }
+    });
+
+    return annotations;
+  };
+
+  const getMetricUnit = (metricSlug: string) => {
+    const metric = enabledMetrics.find(m => m.slug === metricSlug);
+    return metric?.unit || '';
+  };
+
+  if (enabledMetrics.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
-        <p>No numeric metrics enabled. Enable metrics in settings to see charts.</p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <TrendingUp className="h-5 w-5" />
+            <span>Trends</span>
+          </CardTitle>
+          <CardDescription>No metrics enabled for tracking</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-600">
+            <Activity className="h-12 w-12 mx-auto mb-3" />
+            <p>Enable metrics in settings to see trends</p>
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <TrendChart
-      title={currentMetricName}
+      title="Health Trends"
       data={chartData}
       metric={selectedMetric}
-      unit={currentMetricUnit}
-      onMetricChange={setSelectedMetric}
+      unit={getMetricUnit(selectedMetric)}
+      onMetricChange={handleMetricChange}
       onRangeChange={setSelectedRange}
-      availableMetrics={chartableMetrics}
+      availableMetrics={enabledMetrics}
       currentRange={selectedRange}
       loading={loading}
+      annotations={annotations}
     />
   );
 }

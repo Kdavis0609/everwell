@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { logError } from '@/lib/logError';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 
 export function useAuthGuard() {
   const router = useRouter();
@@ -11,7 +12,7 @@ export function useAuthGuard() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const { data: { user }, error } = await supabase.auth.getUser();
+        const { data: { user }, error } = await createSupabaseBrowser().auth.getUser();
         
         if (error) {
           console.error('Auth check error:', error);

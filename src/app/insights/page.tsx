@@ -21,10 +21,13 @@ import {
   Droplets, 
   Moon,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  Calendar,
+  Zap
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LoadingSpinner } from '@/components/loading-spinner';
+import { formatDate, formatNumber } from '@/lib/utils/date';
 
 export default function InsightsPage() {
   const router = useRouter();
@@ -257,12 +260,12 @@ export default function InsightsPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-2xl font-bold">
-                    {insightsData?.today?.steps ? insightsData.today.steps.toLocaleString() : '--'}
+                    {insightsData?.today?.steps ? formatNumber(insightsData.today.steps) : '--'}
                   </span>
                   <CheckCircle className="h-4 w-4 text-green-500" />
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  7-day avg: {insightsData?.trends.steps_7d_avg ? insightsData.trends.steps_7d_avg.toLocaleString() : '--'}
+                  7-day avg: {insightsData?.trends.steps_7d_avg ? formatNumber(insightsData.trends.steps_7d_avg) : '--'}
                 </div>
               </div>
             </CardContent>
@@ -343,11 +346,11 @@ export default function InsightsPage() {
                   <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="text-sm font-medium">
-                        {new Date(day.day).toLocaleDateString()}
+                        {formatDate(day.day)}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {day.weight_lbs && `${day.weight_lbs} lbs`}
-                        {day.steps && ` • ${day.steps.toLocaleString()} steps`}
+                        {day.steps && ` • ${formatNumber(day.steps)} steps`}
                         {day.sleep_hours && ` • ${day.sleep_hours}h sleep`}
                       </div>
                     </div>

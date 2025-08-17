@@ -2,13 +2,14 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Heart, Lock, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { Heart, Lock, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadingSpinner } from '@/components/loading-spinner';
 
 function AuthCallbackContent() {
   const router = useRouter();
@@ -31,6 +32,7 @@ function AuthCallbackContent() {
     // Handle magic link authentication
     const handleAuthCallback = async () => {
       try {
+        const supabase = createSupabaseBrowser();
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
@@ -80,6 +82,7 @@ function AuthCallbackContent() {
     setLoading(true);
 
     try {
+      const supabase = createSupabaseBrowser();
       const { error } = await supabase.auth.updateUser({
         password: newPassword
       });

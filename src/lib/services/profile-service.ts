@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { logError } from '@/lib/logError';
+import { logError } from '@/lib/errors';
 
 export async function getProfile(sb: SupabaseClient) {
   const { data: { session }, error: sErr } = await sb.auth.getSession();

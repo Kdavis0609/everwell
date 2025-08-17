@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 import { MetricToggleList } from '@/components/metrics/metric-toggle-list';
 import { MetricDefinition, UserMetricSetting } from '@/lib/types';
 import { AppShell } from '@/components/app-shell';
@@ -23,6 +23,7 @@ export default function MetricsSetupPage() {
 
   const checkAuthAndLoadMetrics = async () => {
     try {
+      const supabase = createSupabaseBrowser();
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
@@ -39,6 +40,7 @@ export default function MetricsSetupPage() {
 
   const loadMetrics = async () => {
     try {
+      const supabase = createSupabaseBrowser();
       // Load all metric definitions
       const { data: metricDefinitions, error: metricsError } = await supabase
         .from('metric_definitions')
@@ -78,7 +80,7 @@ export default function MetricsSetupPage() {
           const selected: Record<string, boolean> = {};
           const targets: Record<string, number | null> = {};
           
-          metricDefinitions?.forEach(metric => {
+          metricDefinitions?.forEach((metric: any) => {
             selected[metric.id] = metric.default_enabled;
             targets[metric.id] = null;
           });
@@ -97,8 +99,8 @@ export default function MetricsSetupPage() {
       const selected: Record<string, boolean> = {};
       const targets: Record<string, number | null> = {};
 
-      metricDefinitions?.forEach(metric => {
-        const userSetting = userSettings?.find(s => s.metric_id === metric.id);
+      metricDefinitions?.forEach((metric: any) => {
+        const userSetting = userSettings?.find((s: any) => s.metric_id === metric.id);
         selected[metric.id] = userSetting?.enabled ?? metric.default_enabled;
         targets[metric.id] = userSetting?.target_value ?? null;
       });
@@ -131,6 +133,7 @@ export default function MetricsSetupPage() {
     setSaving(true);
     
     try {
+      const supabase = createSupabaseBrowser();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error('User not authenticated');
@@ -148,7 +151,15 @@ export default function MetricsSetupPage() {
       // Upsert all settings
       const { error: upsertError } = await supabase
         .from('user_metric_settings')
-        .upsert(settingsToSave, { onConflict: 'user_id,metric_id' });
+        .upsert(
+          Object.keys(selectedMetrics).map(metricId => ({
+            user_id: user.id,
+            metric_id: metricId,
+            enabled: selectedMetrics[metricId],
+            target_value: targetValues[metricId]
+          })),
+          { onConflict: 'user_id,metric_id' }
+        );
 
       if (upsertError) {
         console.error('Error saving settings:', upsertError);
