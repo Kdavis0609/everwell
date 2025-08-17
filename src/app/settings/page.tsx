@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 import { AppShell } from '@/components/app-shell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmailPreview } from '@/components/email/email-preview';
@@ -17,6 +17,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const loadSettings = async () => {
+      const supabase = createSupabaseBrowser();
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr || !userData.user) {
         window.location.href = '/login';
@@ -27,7 +28,7 @@ export default function SettingsPage() {
       setUserId(uid);
 
       try {
-        const userPreferences = await MetricsService.getUserPreferences(uid);
+        const userPreferences = await MetricsService.getUserPreferences(supabase);
         setPreferences(userPreferences);
       } catch (error) {
         console.error('Error loading preferences:', error);
@@ -43,7 +44,8 @@ export default function SettingsPage() {
     if (!userId) return;
 
     try {
-      await MetricsService.updateUserPreferences(userId, {
+      const supabase = createSupabaseBrowser();
+      await MetricsService.updateUserPreferences(supabase, {
         reminders: {
           ...preferences?.reminders,
           daily_email: enabled

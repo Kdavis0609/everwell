@@ -1,272 +1,439 @@
-import { supabase } from '@/lib/supabaseClient';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { UserEnabledMetric, MetricValue, Measurement, MeasurementWithDefinition, UserPreferences, WeeklyProgress } from '@/lib/types';
+import { logError } from '@/lib/logError';
 
 export class MetricsService {
-  static async getUserEnabledMetrics(userId: string): Promise<UserEnabledMetric[]> {
-    const { data, error } = await supabase
-      .rpc('get_user_enabled_metrics', { user_uuid: userId });
+  static async getUserEnabledMetrics(sb: SupabaseClient): Promise<UserEnabledMetric[]> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('getUserEnabledMetrics.session', sErr); throw sErr; }
+    if (!session) { logError('getUserEnabledMetrics.auth', { message: 'No session' }); return []; }
 
-    if (error) {
-      console.error('Error fetching user metrics:', error);
-      // Check if this is a database migration issue
-      if (error.message.includes('relation "metric_definitions" does not exist') || 
-          error.message.includes('function get_user_enabled_metrics')) {
-        throw new Error('Database migration required. Please run the metrics customization migration in Supabase.');
+    try {
+      const { data, error } = await sb
+        .rpc('get_user_enabled_metrics', { user_uuid: session.user.id });
+
+      if (error) {
+        logError('getUserEnabledMetrics.rpc', error, { userId: session.user.id });
+        throw error;
       }
-      throw new Error('Failed to fetch user metrics: ' + error.message);
-    }
 
-    return data || [];
+      return data || [];
+    } catch (error) {
+      // Fallback to direct query if RPC doesn't exist
+      if (error instanceof Error && 
+          error.message.includes('function get_user_enabled_metrics')) {
+        logError('getUserEnabledMetrics.fallback', error, { userId: session.user.id });
+        
+        const { data, error: queryError } = await sb
+          .from('user_metric_settings')
+          .select(`
+            metric_id,
+            enabled,
+            target_value,
+            unit_override,
+            metric_definitions!inner(
+              slug,
+              name,
+              unit,
+              input_kind,
+              min_value,
+              max_value,
+              step_value,
+              category,
+              default_enabled,
+              sort_order
+            )
+          `)
+          .eq('user_id', session.user.id)
+          .eq('enabled', true)
+          .order('metric_definitions.sort_order');
+
+        if (queryError) {
+          logError('getUserEnabledMetrics.fallback.query', queryError, { userId: session.user.id });
+          throw queryError;
+        }
+
+        return (data || []).map(row => {
+          const metricDef = row.metric_definitions as any;
+          return {
+            id: row.metric_id,
+            metric_id: row.metric_id,
+            slug: metricDef.slug,
+            name: metricDef.name,
+            unit: metricDef.unit,
+            unit_override: row.unit_override,
+            input_kind: metricDef.input_kind,
+            min_value: metricDef.min_value,
+            max_value: metricDef.max_value,
+            step_value: metricDef.step_value,
+            category: metricDef.category,
+            default_enabled: metricDef.default_enabled,
+            sort_order: metricDef.sort_order,
+            created_at: new Date().toISOString(),
+            enabled: row.enabled,
+            target_value: row.target_value
+          };
+        });
+      }
+      throw error;
+    }
   }
 
-  static async saveTodayMeasurements(userId: string, measurements: MetricValue[]): Promise<void> {
-    const today = new Date().toISOString();
-    
-    const measurementsToInsert: Partial<Measurement>[] = measurements
-      .filter(m => {
-        // Filter out empty values
-        return m.value_numeric !== undefined || 
-               m.value_text !== undefined || 
-               m.value_bool !== undefined;
-      })
-      .map(m => ({
-        user_id: userId,
-        metric_id: m.metric_id,
-        value_numeric: m.value_numeric ?? null,
-        value_text: m.value_text ?? null,
-        value_bool: m.value_bool ?? null,
-        measured_at: today
-      }));
+  static async getMetricIdBySlug(sb: SupabaseClient, slug: string): Promise<string | null> {
+    const { data, error } = await sb
+      .from('metric_definitions')
+      .select('id')
+      .eq('slug', slug)
+      .single();
 
-    if (measurementsToInsert.length === 0) {
-      throw new Error('No valid measurements to save');
+    if (error) {
+      logError('getMetricIdBySlug', error, { slug });
+      return null;
     }
 
-    const { error } = await supabase
+    return data?.id || null;
+  }
+
+  static async saveTodayMeasurements(
+    sb: SupabaseClient,
+    dayISOOrMeasurements?: string | MetricValue[], 
+    entries?: Array<{ metric_slug: string; value: number }>
+  ): Promise<{ count: number }> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('saveTodayMeasurements.session', sErr); throw sErr; }
+    if (!session) { logError('saveTodayMeasurements.auth', { message: 'No session' }); return { count: 0 }; }
+    
+    // If entries are provided, use the simplified format
+    if (entries && entries.length > 0) {
+      const today = (dayISOOrMeasurements as string) || new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+      
+      // Look up metric IDs for all slugs
+      const metricIds = await Promise.all(
+        entries.map(async (e) => {
+          const metricId = await this.getMetricIdBySlug(sb, e.metric_slug);
+          if (!metricId) {
+            logError('saveTodayMeasurements.metricLookup', { message: 'Could not find metric ID' }, { slug: e.metric_slug });
+            return null;
+          }
+          return { metricId, value: e.value };
+        })
+      );
+
+      const validEntries = metricIds.filter(Boolean) as Array<{ metricId: string; value: number }>;
+      
+      const rows = validEntries.map((e) => ({
+        user_id: session.user.id,
+        measured_at: `${today}T00:00:00Z`,
+        metric_id: e.metricId,
+        value_numeric: e.value,
+        updated_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      }));
+
+      // upsert by uniqueness constraint (user_id, measured_at, metric_id)
+      const { data, error } = await sb
+        .from('measurements')
+        .upsert(rows, { onConflict: 'user_id,measured_at,metric_id' })
+        .select('user_id, measured_at, metric_id, value_numeric');
+
+      if (error) {
+        logError('saveTodayMeasurements.upsert', error, { rowsCount: rows.length, userId: session.user.id });
+        throw error;
+      }
+      return { count: data?.length ?? 0 };
+    }
+
+    // Legacy support for MetricValue[] format
+    if (!dayISOOrMeasurements || !Array.isArray(dayISOOrMeasurements)) {
+      return { count: 0 };
+    }
+    
+    const measurements = dayISOOrMeasurements as MetricValue[];
+    const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    
+    if (measurements.length === 0) return { count: 0 };
+    
+    // Look up metric IDs for measurements that only have slugs
+    const measurementsWithIds = await Promise.all(
+      measurements
+        .filter(m => {
+          // Filter out empty values
+          return m.value_numeric !== undefined || 
+                 m.value_text !== undefined || 
+                 m.value_bool !== undefined;
+        })
+        .map(async (m) => {
+          // If we have metric_id, use it; otherwise look up by slug
+          let metricId: string | null = m.metric_id;
+          if (!metricId && m.slug) {
+            metricId = await this.getMetricIdBySlug(sb, m.slug);
+          }
+          
+          if (!metricId) {
+            logError('saveTodayMeasurements.metricLookup', { message: 'Could not find metric ID' }, { slug: m.slug, metric_id: m.metric_id });
+            return null;
+          }
+
+          const base = {
+            user_id: session.user.id,
+            metric_id: metricId,
+            value_numeric: m.value_numeric ?? null,
+            value_text: m.value_text ?? null,
+            value_bool: m.value_bool ?? null,
+            measured_at: `${today}T00:00:00Z`
+          };
+
+          return base;
+        })
+    );
+
+    const measurementsToInsert = measurementsWithIds.filter(Boolean) as Partial<Measurement>[];
+
+    if (measurementsToInsert.length === 0) {
+      return { count: 0 };
+    }
+
+    const { error } = await sb
       .from('measurements')
       .insert(measurementsToInsert);
 
     if (error) {
-      console.error('Error saving measurements:', error);
+      logError('saveTodayMeasurements.insert', error, { userId: session.user.id, count: measurementsToInsert.length });
       // Check if this is a database migration issue
       if (error.message.includes('relation "measurements" does not exist')) {
         throw new Error('Database migration required. Please run the metrics customization migration in Supabase.');
       }
       throw new Error('Failed to save measurements: ' + error.message);
     }
+
+    return { count: measurementsToInsert.length };
   }
 
-  static async getRecentMeasurements(userId: string, limit: number = 14): Promise<MeasurementWithDefinition[]> {
-    const { data, error } = await supabase
+  static async getRecentMeasurements(sb: SupabaseClient, days: number = 7): Promise<MeasurementWithDefinition[]> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('getRecentMeasurements.session', sErr); throw sErr; }
+    if (!session) { logError('getRecentMeasurements.auth', { message: 'No session' }); return []; }
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const { data, error } = await sb
       .from('measurements')
       .select(`
         *,
         metric_definitions!inner(
-          id,
           slug,
           name,
           unit,
           input_kind
         )
       `)
-      .eq('user_id', userId)
-      .order('measured_at', { ascending: false })
-      .limit(limit);
+      .eq('user_id', session.user.id)
+      .gte('measured_at', startDate.toISOString())
+      .order('measured_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching recent measurements:', error);
-      // Check if this is a database migration issue
-      if (error.message.includes('relation "measurements" does not exist') || 
-          error.message.includes('relation "metric_definitions" does not exist')) {
-        throw new Error('Database migration required. Please run the metrics customization migration in Supabase.');
-      }
-      throw new Error('Failed to fetch recent measurements: ' + error.message);
+      logError('getRecentMeasurements', error, { userId: session.user.id, days });
+      throw error;
     }
 
     return data || [];
   }
 
-  static async getTodaysMeasurements(userId: string): Promise<MeasurementWithDefinition[]> {
-    const today = new Date().toISOString().split('T')[0];
-    
-    const { data, error } = await supabase
+  static async getTodaysMeasurements(sb: SupabaseClient): Promise<MeasurementWithDefinition[]> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('getTodaysMeasurements.session', sErr); throw sErr; }
+    if (!session) { logError('getTodaysMeasurements.auth', { message: 'No session' }); return []; }
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const { data, error } = await sb
       .from('measurements')
       .select(`
         *,
         metric_definitions!inner(
-          id,
           slug,
           name,
           unit,
           input_kind
         )
       `)
-      .eq('user_id', userId)
-      .gte('measured_at', `${today}T00:00:00`)
-      .lte('measured_at', `${today}T23:59:59`);
+      .eq('user_id', session.user.id)
+      .gte('measured_at', `${today}T00:00:00Z`)
+      .lt('measured_at', `${today}T23:59:59Z`)
+      .order('measured_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching today\'s measurements:', error);
-      // Check if this is a database migration issue
-      if (error.message.includes('relation "measurements" does not exist') || 
-          error.message.includes('relation "metric_definitions" does not exist')) {
-        throw new Error('Database migration required. Please run the metrics customization migration in Supabase.');
-      }
-      throw new Error('Failed to fetch today\'s measurements: ' + error.message);
+      logError('getTodaysMeasurements', error, { userId: session.user.id, today });
+      throw error;
     }
 
     return data || [];
   }
 
-  static async getUserPreferences(userId: string): Promise<UserPreferences> {
-    const { data, error } = await supabase
-      .rpc('get_or_create_user_preferences', { user_uuid: userId });
+  static async getUserPreferences(sb: SupabaseClient): Promise<UserPreferences> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('getUserPreferences.session', sErr); throw sErr; }
+    if (!session) { logError('getUserPreferences.auth', { message: 'No session' }); return { 
+      user_id: '', 
+      timezone: 'UTC', 
+      reminders: { daily_email: false }, 
+      created_at: new Date().toISOString(), 
+      updated_at: new Date().toISOString() 
+    }; }
 
-    if (error) {
-      console.error('Error fetching user preferences:', error);
-      // Check if this is a database migration issue
-      if (error.message.includes('relation "user_preferences" does not exist') || 
+    try {
+      const { data, error } = await sb
+        .rpc('get_or_create_user_preferences', { user_uuid: session.user.id });
+
+      if (error) {
+        logError('getUserPreferences.rpc', error, { userId: session.user.id });
+        throw error;
+      }
+
+      return data || { reminders: { daily_email: false } };
+    } catch (error) {
+      // Fallback to direct query if RPC doesn't exist
+      if (error instanceof Error && 
           error.message.includes('function get_or_create_user_preferences')) {
-        throw new Error('Database migration required. Please run the goals and planning migration in Supabase.');
-      }
-      throw new Error('Failed to fetch user preferences: ' + error.message);
-    }
+        logError('getUserPreferences.fallback', error, { userId: session.user.id });
+        
+        const { data, error: queryError } = await sb
+          .from('user_preferences')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .single();
 
-    return data;
+        if (queryError && queryError.code !== 'PGRST116') {
+          logError('getUserPreferences.fallback.query', queryError, { userId: session.user.id });
+          throw queryError;
+        }
+
+        return data || { reminders: { daily_email: false } };
+      }
+      throw error;
+    }
   }
 
-  static async updateUserPreferences(userId: string, preferences: Partial<UserPreferences>): Promise<void> {
-    const { error } = await supabase
+  static async updateUserPreferences(sb: SupabaseClient, preferences: Partial<UserPreferences>): Promise<void> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('updateUserPreferences.session', sErr); throw sErr; }
+    if (!session) { logError('updateUserPreferences.auth', { message: 'No session' }); return; }
+
+    const { error } = await sb
       .from('user_preferences')
       .upsert({
-        user_id: userId,
+        user_id: session.user.id,
         ...preferences,
         updated_at: new Date().toISOString()
-      });
+      }, { onConflict: 'user_id' });
 
     if (error) {
-      console.error('Error updating user preferences:', error);
-      // Check if this is a database migration issue
-      if (error.message.includes('relation "user_preferences" does not exist')) {
-        throw new Error('Database migration required. Please run the goals and planning migration in Supabase.');
-      }
-      throw new Error('Failed to update user preferences: ' + error.message);
+      logError('updateUserPreferences', error, { userId: session.user.id });
+      throw error;
     }
   }
 
-  static async getWeeklyProgress(userId: string, targetDate?: Date): Promise<WeeklyProgress[]> {
-    const date = targetDate || new Date();
-    const dateString = date.toISOString().split('T')[0];
-    
-    // Try RPC function first
-    const { data: rpcData, error: rpcErr } = await supabase
-      .rpc('get_weekly_progress', { 
-        user_uuid: userId, 
-        target_date: dateString 
+  /** Utility to build YYYY-MM-DD in local time */
+  private static toDate(d: Date) {
+    return d.toISOString().slice(0, 10);
+  }
+
+  static async getWeeklyProgress(sb: SupabaseClient): Promise<WeeklyProgress[]> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('getWeeklyProgress.session', sErr); throw sErr; }
+    if (!session) { logError('getWeeklyProgress.auth', { message: 'No session' }); return []; }
+
+    try {
+      const { data, error } = await sb.rpc('get_weekly_progress', {
+        target_date: new Date().toISOString().slice(0, 10),
+        user_uuid: session.user.id
       });
 
-    if (!rpcErr && rpcData) {
-      // Transform RPC data to WeeklyProgress format
-      const metricGroups = new Map<string, any[]>();
+      if (!error && data) return data;
+      if (error) logError('getWeeklyProgress.rpc', error, { userId: session.user.id });
+    } catch (e) {
+      logError('getWeeklyProgress.rpc.catch', e as any, { userId: session.user.id });
+    }
+
+    // Fallback: pull raw measurements + metrics and aggregate in JS
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 7);
+
+    const { data: measurements, error: err1 } = await sb
+      .from('measurements')
+      .select(`
+        measured_at,
+        metric_id,
+        value_numeric,
+        value_text,
+        value_bool,
+        metric_definitions!inner(
+          slug,
+          name,
+          unit
+        )
+      `)
+      .eq('user_id', session.user.id)
+      .gte('measured_at', startDate.toISOString())
+      .lte('measured_at', endDate.toISOString())
+      .order('measured_at', { ascending: true });
+
+    if (err1) {
+      logError('getWeeklyProgress.select.measurements', err1, { userId: session.user.id });
+      return [];
+    }
+
+    // Aggregate by metric_slug
+    const byMetric = new Map<string, any>();
+    for (const row of measurements || []) {
+      const metricDef = row.metric_definitions as any;
+      const metricSlug = metricDef.slug;
+      const bucket = byMetric.get(metricSlug) ?? { 
+        metric_slug: metricSlug, 
+        metric_name: metricDef.name,
+        values: [] as any[] 
+      };
       
-      rpcData.forEach((row: any) => {
-        const slug = row.metric_slug;
-        if (!metricGroups.has(slug)) {
-          metricGroups.set(slug, []);
-        }
-        metricGroups.get(slug)!.push(row);
-      });
-
-      // Convert to WeeklyProgress format
-      const weeklyProgress: WeeklyProgress[] = [];
-      for (const [slug, measurements] of metricGroups) {
-        const numericValues = measurements
-          .map((m: any) => m.value)
-          .filter((v: any) => v !== null && v !== undefined);
-        
-        const currentAvg = numericValues.length > 0 
-          ? numericValues.reduce((sum: number, val: number) => sum + val, 0) / numericValues.length 
-          : null;
-
-        weeklyProgress.push({
-          metric_name: slug.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
-          current_avg: currentAvg,
-          target_value: null, // Would need to fetch from user_metric_settings
-          progress_percent: null
+      const value = row.value_numeric ?? row.value_text ?? row.value_bool;
+      if (value !== null) {
+        bucket.values.push({ 
+          date: row.measured_at.split('T')[0], 
+          value 
         });
       }
-
-      return weeklyProgress;
-    }
-
-    console.warn('RPC get_weekly_progress failed, using fallback:', rpcErr?.message);
-
-    // Fallback: simple last-7-days select (less aggregated but unblocks UI)
-    const start = new Date(dateString);
-    start.setDate(start.getDate() - 6);
-    const startISO = start.toISOString();
-
-    const { data, error } = await supabase
-      .from('measurements')
-      .select('metric_slug, value_numeric, value_text, value_bool, created_at')
-      .eq('user_id', userId)
-      .gte('created_at', startISO)
-      .lte('created_at', new Date(dateString).toISOString())
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Fallback weekly progress query failed:', error);
-      throw new Error('Failed to fetch weekly progress: ' + error.message);
-    }
-
-    // Transform the raw data into a WeeklyProgress-like format
-    const weeklyData = data || [];
-    const metricGroups = new Map<string, any[]>();
-    
-    weeklyData.forEach(measurement => {
-      const slug = measurement.metric_slug;
-      if (!metricGroups.has(slug)) {
-        metricGroups.set(slug, []);
-      }
-      metricGroups.get(slug)!.push(measurement);
-    });
-
-    // Convert to WeeklyProgress format
-    const weeklyProgress: WeeklyProgress[] = [];
-    for (const [slug, measurements] of metricGroups) {
-      const numericValues = measurements
-        .map(m => m.value_numeric)
-        .filter(v => v !== null && v !== undefined);
       
-      const currentAvg = numericValues.length > 0 
-        ? numericValues.reduce((sum, val) => sum + val, 0) / numericValues.length 
-        : null;
-
-      weeklyProgress.push({
-        metric_name: slug.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        current_avg: currentAvg,
-        target_value: null, // Would need to fetch from user_metric_settings
-        progress_percent: null
-      });
+      byMetric.set(metricSlug, bucket);
     }
 
-    return weeklyProgress;
+    return Array.from(byMetric.values());
   }
 
-  static async updateMetricTarget(userId: string, metricId: string, targetValue: number | null): Promise<void> {
-    const { error } = await supabase
+  static async updateMetricTarget(sb: SupabaseClient, metricSlug: string, targetValue: number | null): Promise<void> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('updateMetricTarget.session', sErr); throw sErr; }
+    if (!session) { logError('updateMetricTarget.auth', { message: 'No session' }); return; }
+
+    // Get metric ID from slug
+    const metricId = await this.getMetricIdBySlug(sb, metricSlug);
+    if (!metricId) {
+      logError('updateMetricTarget.metricLookup', { message: 'Could not find metric ID' }, { slug: metricSlug });
+      throw new Error(`Metric not found: ${metricSlug}`);
+    }
+
+    const { error } = await sb
       .from('user_metric_settings')
-      .update({ target_value: targetValue })
-      .eq('user_id', userId)
-      .eq('metric_id', metricId);
+      .upsert({
+        user_id: session.user.id,
+        metric_id: metricId,
+        target_value: targetValue,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id,metric_id' });
 
     if (error) {
-      console.error('Error updating metric target:', error);
-      // Check if this is a database migration issue
-      if (error.message.includes('relation "user_metric_settings" does not exist')) {
-        throw new Error('Database migration required. Please run the metrics customization migration in Supabase.');
-      }
-      throw new Error('Failed to update metric target: ' + error.message);
+      logError('updateMetricTarget', error, { userId: session.user.id, metricSlug, targetValue });
+      throw error;
     }
   }
 
@@ -289,5 +456,67 @@ export class MetricsService {
 
   static getMeasurementDisplayName(measurement: MeasurementWithDefinition): string {
     return measurement.metric_definitions?.name || 'Unknown Metric';
+  }
+
+  static async getMeasurementsWithMetrics(sb: SupabaseClient, days: number = 30): Promise<MeasurementWithDefinition[]> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('getMeasurementsWithMetrics.session', sErr); throw sErr; }
+    if (!session) { logError('getMeasurementsWithMetrics.auth', { message: 'No session' }); return []; }
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const { data, error } = await sb
+      .from('measurements')
+      .select(`
+        *,
+        metric_definitions!inner(
+          slug,
+          name,
+          unit,
+          input_kind
+        )
+      `)
+      .eq('user_id', session.user.id)
+      .gte('measured_at', startDate.toISOString())
+      .order('measured_at', { ascending: true });
+
+    if (error) {
+      logError('getMeasurementsWithMetrics', error, { userId: session.user.id, days });
+      throw error;
+    }
+
+    return data || [];
+  }
+
+  static async getWeeklyMeasurements(sb: SupabaseClient): Promise<MeasurementWithDefinition[]> {
+    const { data: { session }, error: sErr } = await sb.auth.getSession();
+    if (sErr) { logError('getWeeklyMeasurements.session', sErr); throw sErr; }
+    if (!session) { logError('getWeeklyMeasurements.auth', { message: 'No session' }); return []; }
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 7);
+
+    const { data, error } = await sb
+      .from('measurements')
+      .select(`
+        *,
+        metric_definitions!inner(
+          slug,
+          name,
+          unit,
+          input_kind
+        )
+      `)
+      .eq('user_id', session.user.id)
+      .gte('measured_at', startDate.toISOString())
+      .order('measured_at', { ascending: true });
+
+    if (error) {
+      logError('getWeeklyMeasurements', error, { userId: session.user.id });
+      throw error;
+    }
+
+    return data || [];
   }
 }

@@ -1,60 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabaseClient';
+import { createSupabaseServer } from '@/lib/supabase/server';
+import { logError } from '@/lib/logError';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, metrics, days } = await request.json();
-
-    if (!userId || !metrics || !Array.isArray(metrics) || metrics.length === 0) {
+    const supabase = await createSupabaseServer();
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      logError('export-csv.auth', authError || new Error('No user'));
       return NextResponse.json(
-        { error: 'User ID and metrics array are required' },
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    const { metrics, startDate, endDate } = await request.json();
+
+    if (!metrics || !Array.isArray(metrics) || metrics.length === 0) {
+      return NextResponse.json(
+        { error: 'At least one metric must be selected' },
         { status: 400 }
       );
     }
 
-    const supabase = createClient();
-
-    // Calculate date range
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - (days || 30));
-
-    // Get metric definitions for the selected metrics
+    // Get metric definitions
     const { data: metricDefinitions, error: metricError } = await supabase
       .from('metric_definitions')
       .select('id, slug, name, unit')
       .in('slug', metrics);
 
     if (metricError) {
-      console.error('Error fetching metric definitions:', metricError);
+      logError('export-csv.metric-definitions', metricError, { userId: user.id });
       return NextResponse.json(
         { error: 'Failed to fetch metric definitions' },
         { status: 500 }
       );
     }
 
-    const metricMap = new Map(metricDefinitions.map(m => [m.id, m]));
+    const metricIds = metricDefinitions.map(m => m.id);
 
-    // Fetch measurements for the selected metrics and date range
-    const { data: measurements, error: measurementError } = await supabase
+    // Build query
+    let query = supabase
       .from('measurements')
       .select(`
-        *,
+        measured_at,
+        value_numeric,
+        value_text,
+        value_bool,
         metric_definitions!inner(
-          id,
           slug,
           name,
           unit
         )
       `)
-      .eq('user_id', userId)
-      .in('metric_id', metricDefinitions.map(m => m.id))
-      .gte('measured_at', startDate.toISOString())
-      .lte('measured_at', endDate.toISOString())
+      .eq('user_id', user.id)
+      .in('metric_id', metricIds)
       .order('measured_at', { ascending: true });
 
+    if (startDate) {
+      query = query.gte('measured_at', `${startDate}T00:00:00Z`);
+    }
+    if (endDate) {
+      query = query.lte('measured_at', `${endDate}T23:59:59Z`);
+    }
+
+    const { data: measurements, error: measurementError } = await query;
+
     if (measurementError) {
-      console.error('Error fetching measurements:', measurementError);
+      logError('export-csv.measurements', measurementError, { userId: user.id });
       return NextResponse.json(
         { error: 'Failed to fetch measurements' },
         { status: 500 }
@@ -62,13 +77,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate CSV content
-    const csvRows = ['date,metric_slug,metric_name,value,unit'];
+    const csvHeaders = ['date', 'metric_slug', 'metric_name', 'value', 'unit'];
+    const csvRows = [csvHeaders.join(',')];
 
-    for (const measurement of measurements) {
-      const metricDef = metricMap.get(measurement.metric_id);
-      if (!metricDef) continue;
-
-      // Format the value based on the measurement type
+    for (const measurement of measurements || []) {
+      const date = measurement.measured_at.split('T')[0];
+      const metricSlug = (measurement.metric_definitions as any).slug;
+      const metricName = (measurement.metric_definitions as any).name;
+      const unit = (measurement.metric_definitions as any).unit || '';
+      
       let value = '';
       if (measurement.value_numeric !== null) {
         value = measurement.value_numeric.toString();
@@ -78,39 +95,24 @@ export async function POST(request: NextRequest) {
         value = measurement.value_bool.toString();
       }
 
-      // Format date to YYYY-MM-DD
-      const date = new Date(measurement.measured_at).toISOString().split('T')[0];
-
-      // Escape CSV values (handle commas and quotes)
-      const escapeCSV = (str: string) => {
-        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      };
-
-      csvRows.push([
-        date,
-        escapeCSV(metricDef.slug),
-        escapeCSV(metricDef.name),
-        escapeCSV(value),
-        escapeCSV(metricDef.unit || '')
-      ].join(','));
+      const row = [date, metricSlug, metricName, value, unit]
+        .map(field => `"${field.replace(/"/g, '""')}"`)
+        .join(',');
+      csvRows.push(row);
     }
 
     const csvContent = csvRows.join('\n');
+    const filename = `everwell-export-${new Date().toISOString().split('T')[0]}.csv`;
 
-    // Return CSV as downloadable file
     return new NextResponse(csvContent, {
-      status: 200,
       headers: {
         'Content-Type': 'text/csv',
-        'Content-Disposition': `attachment; filename="everwell-export-${new Date().toISOString().split('T')[0]}.csv"`,
+        'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
 
   } catch (error) {
-    console.error('Export CSV error:', error);
+    logError('export-csv.unexpected', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

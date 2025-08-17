@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 import { AppShell } from '@/components/app-shell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,7 @@ export default function InsightsPage() {
   useEffect(() => {
     const loadInsights = async () => {
       try {
+        const supabase = createSupabaseBrowser();
         // Check authentication
         const { data: { user }, error: authError } = await supabase.auth.getUser();
         if (authError || !user) {
@@ -46,7 +47,7 @@ export default function InsightsPage() {
         setUserId(user.id);
 
         // Load insights data
-        const data = await InsightsService.getInsightsData(user.id);
+        const data = await InsightsService.getInsightsData(supabase);
         setInsightsData(data);
       } catch (error) {
         console.error('Error loading insights:', error);
@@ -64,10 +65,11 @@ export default function InsightsPage() {
 
     setGenerating(true);
     try {
-      const insight = await InsightsService.generateAIInsight(userId);
+      const supabase = createSupabaseBrowser();
+      const insight = await InsightsService.generateAIInsight(supabase);
       
       // Refresh the insights data
-      const data = await InsightsService.getInsightsData(userId);
+      const data = await InsightsService.getInsightsData(supabase);
       setInsightsData(data);
       
       toast.success('Insights regenerated successfully!');

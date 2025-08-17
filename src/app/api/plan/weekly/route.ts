@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { createSupabaseServer } from '@/lib/supabase/server';
 import { InsightsService } from '@/lib/services/insights-service';
 import { MetricsService } from '@/lib/services/metrics-service';
+import { ensureProfile } from '@/lib/services/profile-service';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -12,25 +12,7 @@ if (!OPENAI_API_KEY) {
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            cookieStore.set({ name, value, ...options });
-          },
-          remove(name: string, options: CookieOptions) {
-            cookieStore.set({ name, value: '', ...options });
-          },
-        },
-      }
-    );
+    const supabase = await createSupabaseServer();
     
     // Get the current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -43,20 +25,17 @@ export async function POST(request: NextRequest) {
 
     const userId = user.id;
     
-    // Get user profile for context (only existing columns)
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, avatar_url')
-      .eq('id', userId)
-      .single();
-
-    if (profileError) {
-      console.error('Error fetching profile:', profileError);
-      return NextResponse.json({ error: 'Failed to fetch user profile' }, { status: 500 });
+    // Ensure profile exists
+    let profile;
+    try {
+      profile = await ensureProfile(supabase);
+    } catch (profileError) {
+      console.error('Profile creation failed:', profileError);
+      return NextResponse.json({ error: 'Failed to create user profile' }, { status: 500 });
     }
 
     // Get weekly progress data
-    const weeklyProgress = await MetricsService.getWeeklyProgress(userId);
+    const weeklyProgress = await MetricsService.getWeeklyProgress(supabase);
     
     // Get last 7 days of derived features
     const { data: derivedFeatures, error: derivedError } = await supabase
@@ -85,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     // Store the weekly plan in ai_insights
     await InsightsService.saveAIInsight(
-      userId, 
+      supabase, 
       lastMonday || new Date().toISOString().split('T')[0], 
       weeklyPlan
     );

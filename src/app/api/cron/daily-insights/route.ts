@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabaseClient';
+import { createSupabaseServer } from '@/lib/supabase/server';
 import { InsightsService } from '@/lib/services/insights-service';
+import { logError } from '@/lib/logError';
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
@@ -12,15 +13,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabase = createClient();
+    const supabase = await createSupabaseServer();
     
     // Get all users (in production, you might want to filter active users)
     const { data: users, error: usersError } = await supabase
       .from('profiles')
-      .select('id');
+      .select('user_id');
 
     if (usersError) {
-      console.error('Error fetching users:', usersError);
+      logError('daily-insights.users', usersError);
       return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 });
     }
 
@@ -31,20 +32,20 @@ export async function POST(request: NextRequest) {
     for (const user of users || []) {
       try {
         // Calculate derived features
-        await InsightsService.calculateDerivedFeatures(user.id, today);
+        await InsightsService.calculateDerivedFeatures(supabase, today);
         
         // Generate AI insight
-        const insight = await InsightsService.generateAIInsight(user.id);
+        const insight = await InsightsService.generateAIInsight(supabase);
         
         results.push({
-          userId: user.id,
+          userId: user.user_id,
           status: 'success',
           insight: insight.summary.substring(0, 50) + '...'
         });
       } catch (error) {
-        console.error(`Error processing user ${user.id}:`, error);
+        logError('daily-insights.user-process', error, { userId: user.user_id });
         results.push({
-          userId: user.id,
+          userId: user.user_id,
           status: 'error',
           error: error instanceof Error ? error.message : 'Unknown error'
         });
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in daily insights cron:', error);
+    logError('daily-insights.unexpected', error);
     return NextResponse.json(
       { error: 'Failed to process daily insights' },
       { status: 500 }

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { useEffect, useState, useMemo } from 'react';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
+import { logError } from '@/lib/logError';
 import { TrendChart } from './trend-chart';
 import { UserEnabledMetric, MeasurementWithDefinition } from '@/lib/types';
 
@@ -16,12 +17,12 @@ interface ChartDataPoint {
 }
 
 export function ChartContainer({ userId, enabledMetrics }: ChartContainerProps) {
-  const [selectedMetric, setSelectedMetric] = useState<string>('weight_lbs');
-  const [selectedRange, setSelectedRange] = useState<number>(30);
+  const [selectedMetric, setSelectedMetric] = useState<string>('');
+  const [selectedRange, setSelectedRange] = useState(30);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Filter metrics that are suitable for charts (numeric only)
+  // Filter to only numeric metrics that can be charted
   const chartableMetrics = useMemo(() => {
     return enabledMetrics.filter(metric => 
       metric.input_kind === 'number' || metric.input_kind === 'integer'
@@ -47,6 +48,16 @@ export function ChartContainer({ userId, enabledMetrics }: ChartContainerProps) 
     const loadChartData = async () => {
       setLoading(true);
       try {
+        const supabase = createSupabaseBrowser();
+        
+        // Check authentication
+        const { data: { session }, error: authError } = await supabase.auth.getSession();
+        if (authError || !session) {
+          logError('chart.auth', authError || new Error('No session'), { userId });
+          setChartData([]);
+          return;
+        }
+
         // Calculate the start date based on selected range
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - selectedRange);
@@ -71,7 +82,7 @@ export function ChartContainer({ userId, enabledMetrics }: ChartContainerProps) 
           .order('measured_at', { ascending: true });
 
         if (error) {
-          console.error('Error fetching chart data:', error);
+          logError('chart.fetch', error, { userId, metric: selectedMetric });
           setChartData([]);
           return;
         }
@@ -86,7 +97,7 @@ export function ChartContainer({ userId, enabledMetrics }: ChartContainerProps) 
 
         setChartData(transformedData);
       } catch (error) {
-        console.error('Error loading chart data:', error);
+        logError('chart.unexpected', error, { userId, metric: selectedMetric });
         setChartData([]);
       } finally {
         setLoading(false);

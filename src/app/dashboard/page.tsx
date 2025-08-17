@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { AppShell } from '@/components/app-shell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,19 +16,12 @@ import { ChartContainer } from '@/components/charts';
 import { useMetricsSetup } from '@/lib/hooks/use-metrics-setup';
 import { MetricsService } from '@/lib/services/metrics-service';
 import { InsightsService } from '@/lib/services/insights-service';
+import { ensureProfile, getProfile } from '@/lib/services/profile-service';
 import { UserEnabledMetric, MetricValue, MeasurementWithDefinition, WeeklyProgress, AIInsight } from '@/lib/types';
+import type { Profile } from '@/lib/types/profile';
 import { TrendingUp, Plus, Activity, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { MigrationRequired } from '@/components/migration-required';
-
-type Profile = {
-  id: string;
-  email: string;
-  full_name: string | null;
-  avatar_url: string | null;
-  created_at?: string;
-  updated_at?: string;
-};
 
 export default function DashboardPage() {
   const { loading: setupLoading, hasConfiguredMetrics } = useMetricsSetup();
@@ -60,6 +53,7 @@ export default function DashboardPage() {
       setLoading(true);
       setErr(null);
 
+      const supabase = createSupabaseBrowser();
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr || !userData.user) {
         setErr('Not signed in. Redirecting to login…');
@@ -73,41 +67,16 @@ export default function DashboardPage() {
 
       // Load user profile
       try {
-        const { data: profileData, error: profileErr } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', uid)
-          .single();
-
-        if (profileErr) {
-          if (profileErr.code === 'PGRST116') {
-            // No profile found - create one automatically
-            console.log('No profile found for user, creating one automatically');
-            
-            const { data: newProfile, error: createErr } = await supabase
-              .from('profiles')
-              .insert({
-                id: uid,
-                email: userData.user.email || '',
-                full_name: userData.user.user_metadata?.full_name || null,
-                avatar_url: userData.user.user_metadata?.avatar_url || null
-              })
-              .select()
-              .single();
-
-            if (createErr) {
-              console.error('Failed to create profile:', createErr);
-              toast.error('Failed to create user profile. Please try refreshing the page.');
-            } else {
-              setProfile(newProfile);
-            }
-          } else {
-            console.error('Profile error:', profileErr);
-            toast.error('Failed to load user profile. Please try refreshing the page.');
-          }
-        } else if (profileData) {
-          setProfile(profileData);
+        let profile = await getProfile(supabase);
+        
+        if (!profile) {
+          // No profile found - create one automatically
+          console.log('No profile found for user, creating one automatically');
+          await ensureProfile(supabase);
+          profile = await getProfile(supabase);
         }
+        
+        setProfile(profile);
       } catch (error) {
         console.error('Profile loading error:', error);
         toast.error('Failed to load user profile. Please try refreshing the page.');
@@ -116,10 +85,10 @@ export default function DashboardPage() {
       // Load enabled metrics and recent measurements
       try {
         await Promise.all([
-          loadEnabledMetrics(uid),
-          loadRecentMeasurements(uid),
-          loadTodaysMeasurements(uid),
-          loadWeeklyData(uid)
+          loadEnabledMetrics(supabase),
+          loadRecentMeasurements(supabase),
+          loadTodaysMeasurements(supabase),
+          loadWeeklyData(supabase)
         ]);
       } catch (error) {
         console.error('Error loading metrics data:', error);
@@ -137,9 +106,9 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  const loadEnabledMetrics = async (uid: string) => {
+  const loadEnabledMetrics = async (supabase: any) => {
     try {
-      const metrics = await MetricsService.getUserEnabledMetrics(uid);
+      const metrics = await MetricsService.getUserEnabledMetrics(supabase);
       setEnabledMetrics(metrics);
       
       // Initialize form values using metric.slug as keys
@@ -154,9 +123,9 @@ export default function DashboardPage() {
     }
   };
 
-  const loadRecentMeasurements = async (uid: string) => {
+  const loadRecentMeasurements = async (supabase: any) => {
     try {
-      const measurements = await MetricsService.getRecentMeasurements(uid, 10);
+      const measurements = await MetricsService.getRecentMeasurements(supabase, 10);
       setRecentMeasurements(measurements);
     } catch (error) {
       console.error('Error loading recent measurements:', error);
@@ -164,9 +133,9 @@ export default function DashboardPage() {
     }
   };
 
-  const loadTodaysMeasurements = async (uid: string) => {
+  const loadTodaysMeasurements = async (supabase: any) => {
     try {
-      const measurements = await MetricsService.getTodaysMeasurements(uid);
+      const measurements = await MetricsService.getTodaysMeasurements(supabase);
       setTodaysMeasurements(measurements);
       
       // Pre-fill form with today's measurements
@@ -193,18 +162,18 @@ export default function DashboardPage() {
     }
   };
 
-  const loadWeeklyData = async (uid: string) => {
+  const loadWeeklyData = async (supabase: any) => {
     try {
       setWeeklyLoading(true);
       
       // Load weekly progress
-      const progress = await MetricsService.getWeeklyProgress(uid);
+      const progress = await MetricsService.getWeeklyProgress(supabase);
       setWeeklyProgress(progress);
       
       // Load weekly plan (get last Monday's plan)
       const { data: lastMonday } = await supabase.rpc('get_last_monday');
       if (lastMonday) {
-        const plan = await InsightsService.getAIInsight(uid, lastMonday);
+        const plan = await InsightsService.getAIInsight(supabase, lastMonday);
         setWeeklyPlan(plan);
       }
     } catch (error) {
@@ -231,7 +200,6 @@ export default function DashboardPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId }),
       });
 
       if (!response.ok) {
@@ -241,11 +209,12 @@ export default function DashboardPage() {
       const plan = await response.json();
       
       // Get last Monday's date for storage
+      const supabase = createSupabaseBrowser();
       const { data: lastMonday } = await supabase.rpc('get_last_monday');
       const planDate = lastMonday || new Date().toISOString().split('T')[0];
       
       // Save the plan
-      await InsightsService.saveAIInsight(userId, planDate, plan);
+      await InsightsService.saveAIInsight(supabase, planDate, plan);
       
       // Update local state
       setWeeklyPlan({
@@ -310,6 +279,7 @@ export default function DashboardPage() {
     setErr(null);
 
     try {
+      const supabase = createSupabaseBrowser();
       const measurements: MetricValue[] = enabledMetrics
         .map(metric => {
           const value = form[metric.slug];
@@ -358,7 +328,7 @@ export default function DashboardPage() {
         return;
       }
 
-      await MetricsService.saveTodayMeasurements(userId, measurements);
+      await MetricsService.saveTodayMeasurements(supabase, measurements);
       
       toast.success('Today\'s metrics saved successfully!');
       
@@ -370,9 +340,9 @@ export default function DashboardPage() {
       setForm(initialForm);
       
       await Promise.all([
-        loadRecentMeasurements(userId),
-        loadTodaysMeasurements(userId),
-        loadWeeklyData(userId)
+        loadRecentMeasurements(supabase),
+        loadTodaysMeasurements(supabase),
+        loadWeeklyData(supabase)
       ]);
     } catch (error) {
       console.error('Error saving metrics:', error);
@@ -494,7 +464,7 @@ export default function DashboardPage() {
                       <h4 className="font-medium mb-2">Recommendations</h4>
                       <ul className="space-y-1">
                         {insights.insights.recommendations.map((rec: string, index: number) => (
-                          <li key={index} className="text-sm text-muted-foreground flex items-start">
+                          <li key={`rec-${index}-${rec.substring(0, 20)}`} className="text-sm text-muted-foreground flex items-start">
                             <span className="mr-2">•</span>
                             {rec}
                           </li>
@@ -509,7 +479,7 @@ export default function DashboardPage() {
                       <h4 className="font-medium mb-2">Observations</h4>
                       <ul className="space-y-1">
                         {insights.insights.observations.map((obs: string, index: number) => (
-                          <li key={index} className="text-sm text-muted-foreground flex items-start">
+                          <li key={`obs-${index}-${obs.substring(0, 20)}`} className="text-sm text-muted-foreground flex items-start">
                             <span className="mr-2">•</span>
                             {obs}
                           </li>
@@ -568,8 +538,9 @@ export default function DashboardPage() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {enabledMetrics.map((metric) => {
                           return (
-                            <div key={metric.id} className={metric.input_kind === 'text' ? 'md:col-span-2' : ''}>
+                            <div key={metric.slug ?? metric.id} className={metric.input_kind === 'text' ? 'md:col-span-2' : ''}>
                               <MetricInput
+                                key={metric.slug ?? metric.id}
                                 metric={metric}
                                 value={form[metric.slug]}
                                 onChange={(value) => handleMetricChange(metric.slug, value)}

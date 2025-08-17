@@ -12,7 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Upload, Download, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabaseClient';
+import { createSupabaseBrowser } from '@/lib/supabase/client';
 import { MetricsService } from '@/lib/services/metrics-service';
 
 interface CSVRow {
@@ -47,6 +47,7 @@ export default function ImportExportPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
+        const supabase = createSupabaseBrowser();
         const { data: userData, error: userErr } = await supabase.auth.getUser();
         if (userErr || !userData.user) {
           window.location.href = '/login';
@@ -56,7 +57,7 @@ export default function ImportExportPage() {
         const uid = userData.user.id;
         setUserId(uid);
 
-        const metrics = await MetricsService.getUserEnabledMetrics(uid);
+        const metrics = await MetricsService.getUserEnabledMetrics(supabase);
         setEnabledMetrics(metrics);
       } catch (error) {
         console.error('Error loading data:', error);

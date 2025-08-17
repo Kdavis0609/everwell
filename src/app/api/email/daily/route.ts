@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
-import { createClient } from '@/lib/supabaseClient';
+import { createSupabaseServer } from '@/lib/supabase/server';
 import { InsightsService } from '@/lib/services/insights-service';
 import { MetricsService } from '@/lib/services/metrics-service';
 
@@ -42,13 +42,13 @@ export async function POST(request: NextRequest) {
 }
 
 async function sendDailyEmail(userId: string) {
-  const supabase = createClient();
+  const supabase = await createSupabaseServer();
 
   // Get user profile
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', userId)
+    .eq('user_id', userId)
     .single();
 
   if (profileError || !profile) {
@@ -56,7 +56,7 @@ async function sendDailyEmail(userId: string) {
   }
 
   // Get user preferences to check if reminders are enabled
-  const preferences = await MetricsService.getUserPreferences(userId);
+  const preferences = await MetricsService.getUserPreferences(supabase);
   if (!preferences.reminders?.daily_email) {
     console.log(`Daily email reminders disabled for user ${userId}`);
     return;
@@ -64,13 +64,13 @@ async function sendDailyEmail(userId: string) {
 
   // Get today's AI insights
   const today = new Date().toISOString().split('T')[0];
-  const insights = await InsightsService.getAIInsight(userId, today);
+  const insights = await InsightsService.getAIInsight(supabase, today);
 
   // Get weekly progress
-  const weeklyProgress = await MetricsService.getWeeklyProgress(userId);
+  const weeklyProgress = await MetricsService.getWeeklyProgress(supabase);
 
   // Get enabled metrics
-  const enabledMetrics = await MetricsService.getUserEnabledMetrics(userId);
+  const enabledMetrics = await MetricsService.getUserEnabledMetrics(supabase);
 
   // Generate email content
   const emailContent = generateEmailContent({
@@ -99,12 +99,12 @@ async function sendDailyEmail(userId: string) {
 }
 
 async function sendDailyEmailsToAllUsers() {
-  const supabase = createClient();
+  const supabase = await createSupabaseServer();
 
   // Get all users with daily email reminders enabled
   const { data: users, error } = await supabase
     .from('profiles')
-    .select('id, email')
+    .select('user_id, email')
     .eq('reminders->daily_email', true);
 
   if (error) {
@@ -119,9 +119,9 @@ async function sendDailyEmailsToAllUsers() {
   // Send emails to all users
   for (const user of users) {
     try {
-      await sendDailyEmail(user.id);
+      await sendDailyEmail(user.user_id);
     } catch (error) {
-      console.error(`Failed to send email to user ${user.id}:`, error);
+      console.error(`Failed to send email to user ${user.user_id}:`, error);
       // Continue with other users even if one fails
     }
   }

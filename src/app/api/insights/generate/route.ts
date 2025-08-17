@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabaseClient';
+import { createSupabaseServer } from '@/lib/supabase/server';
+import { logError } from '@/lib/logError';
 import { InsightsData } from '@/lib/types';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -10,22 +11,29 @@ if (!OPENAI_API_KEY) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, insightsData } = await request.json();
-
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-    }
-
     if (!OPENAI_API_KEY) {
       return NextResponse.json({ error: 'OpenAI API key not configured' }, { status: 500 });
     }
 
+    const supabase = await createSupabaseServer();
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      logError('insights-generate.auth', authError || new Error('No user'));
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    const { insightsData } = await request.json();
+
     // Get user profile for context
-    const supabase = createClient();
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', userId)
+      .eq('user_id', user.id)
       .single();
 
     // Prepare the prompt data
@@ -36,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(insight);
   } catch (error) {
-    console.error('Error generating AI insight:', error);
+    logError('insights-generate.unexpected', error);
     return NextResponse.json(
       { error: 'Failed to generate AI insight' },
       { status: 500 }

@@ -1,28 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { createSupabaseServer } from '@/lib/supabase/server';
+import { ensureProfile } from '@/lib/services/profile-service';
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            cookieStore.set({ name, value, ...options });
-          },
-          remove(name: string, options: CookieOptions) {
-            cookieStore.set({ name, value: '', ...options });
-          },
-        },
-      }
-    );
+    const supabase = await createSupabaseServer();
     
     // Get the current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -30,6 +12,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { ok: false, reason: 'not_authenticated', message: 'User not authenticated' },
         { status: 401 }
+      );
+    }
+
+    // Ensure profile exists
+    try {
+      await ensureProfile(supabase);
+    } catch (profileError) {
+      console.error('Profile creation failed:', profileError);
+      return NextResponse.json(
+        { ok: false, reason: 'profile_error', message: 'Failed to create user profile' },
+        { status: 500 }
       );
     }
 
@@ -73,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if we have enough data (at least 5 days with measurements)
-    const uniqueDays = new Set(measurements?.map(m => m.measured_at.split('T')[0]) || []);
+    const uniqueDays = new Set(measurements?.map((m: any) => m.measured_at.split('T')[0]) || []);
     if (uniqueDays.size < 5) {
       return NextResponse.json(
         { 

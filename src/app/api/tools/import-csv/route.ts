@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabaseClient';
+import { createSupabaseServer } from '@/lib/supabase/server';
+import { logError } from '@/lib/logError';
 import Papa from 'papaparse';
 
 interface CSVRow {
@@ -10,16 +11,26 @@ interface CSVRow {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, csvData } = await request.json();
-
-    if (!userId || !csvData) {
+    const supabase = await createSupabaseServer();
+    
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      logError('import-csv.auth', authError || new Error('No user'));
       return NextResponse.json(
-        { error: 'User ID and CSV data are required' },
-        { status: 400 }
+        { error: 'Authentication required' },
+        { status: 401 }
       );
     }
 
-    const supabase = createClient();
+    const { csvData } = await request.json();
+
+    if (!csvData) {
+      return NextResponse.json(
+        { error: 'CSV data is required' },
+        { status: 400 }
+      );
+    }
 
     // Parse CSV data
     const parseResult = Papa.parse(csvData, {
@@ -58,7 +69,7 @@ export async function POST(request: NextRequest) {
       .select('id, slug, input_kind');
 
     if (metricError) {
-      console.error('Error fetching metric definitions:', metricError);
+      logError('import-csv.metric-definitions', metricError, { userId: user.id });
       return NextResponse.json(
         { error: 'Failed to fetch metric definitions' },
         { status: 500 }
@@ -114,7 +125,7 @@ export async function POST(request: NextRequest) {
       }
 
       measurements.push({
-        user_id: userId,
+        user_id: user.id,
         metric_id: metricDef.id,
         measured_at: `${row.date}T00:00:00Z`,
         value_numeric: valueNumeric,
@@ -145,7 +156,7 @@ export async function POST(request: NextRequest) {
       .select();
 
     if (insertError) {
-      console.error('Error inserting measurements:', insertError);
+      logError('import-csv.insert', insertError, { userId: user.id, count: measurements.length });
       return NextResponse.json(
         { error: 'Failed to insert measurements' },
         { status: 500 }
@@ -154,12 +165,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      importedCount: insertedMeasurements.length,
-      message: `Successfully imported ${insertedMeasurements.length} measurements`
+      imported: insertedMeasurements.length,
+      total: measurements.length
     });
 
   } catch (error) {
-    console.error('Import CSV error:', error);
+    logError('import-csv.unexpected', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
