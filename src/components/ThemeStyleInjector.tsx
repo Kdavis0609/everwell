@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useTheme } from 'next-themes';
-import { lightPalette, darkPalette, applyPalette } from '@/theme/palette';
+import { lightPalette, darkPalette, applyPalette, type ThemePalette } from '@/theme/palette';
 
 // WHY: Runtime theme palette injector that overrides CSS variables without modifying globals.css
 // This component applies improved colors and contrast at runtime based on the active theme
@@ -10,8 +10,8 @@ export function ThemeStyleInjector() {
   const { theme, resolvedTheme } = useTheme();
 
   useEffect(() => {
-    // Determine which palette to apply
-    let activePalette = lightPalette;
+    // Determine which palette to apply - now typed as ThemePalette
+    let activePalette: ThemePalette = lightPalette;
     
     if (resolvedTheme === 'dark') {
       activePalette = darkPalette;
@@ -44,7 +44,7 @@ export function ThemeStyleInjector() {
     const handleChange = () => {
       if (resolvedTheme === 'system') {
         const prefersDark = mediaQuery.matches;
-        const activePalette = prefersDark ? darkPalette : lightPalette;
+        const activePalette: ThemePalette = prefersDark ? darkPalette : lightPalette;
         applyPalette(activePalette);
         
         if (process.env.NODE_ENV === 'development') {

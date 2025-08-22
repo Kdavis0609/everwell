@@ -1,6 +1,23 @@
 // WHY: Runtime palette overrides to improve colors/contrast without modifying globals.css
 // These values will be applied via CSS variables at runtime
 
+// WHY: Define the CSS custom properties we use to avoid literal-type mismatches
+type VarKey =
+  | '--background' | '--foreground'
+  | '--card' | '--card-foreground'
+  | '--popover' | '--popover-foreground'
+  | '--primary' | '--primary-foreground'
+  | '--secondary' | '--secondary-foreground'
+  | '--muted' | '--muted-foreground'
+  | '--accent' | '--accent-foreground'
+  | '--destructive' | '--destructive-foreground'
+  | '--border' | '--input' | '--ring'
+  | '--radius'
+  | '--chart-1' | '--chart-2' | '--chart-3' | '--chart-4' | '--chart-5';
+
+// WHY: Structural type that both palettes can satisfy
+export type ThemePalette = Record<VarKey, string>;
+
 export const lightPalette = {
   // Base surfaces - improved contrast and cleaner whites
   '--background': '210 20% 98%',           // slate-50 - softer than pure white
@@ -36,7 +53,7 @@ export const lightPalette = {
   '--chart-3': '43 96% 56%',               // amber-400 - warm accent
   '--chart-4': '262 83% 74%',              // violet-300 - purple accent
   '--chart-5': '346 77% 60%',              // rose-400 - pink accent
-} as const;
+} satisfies ThemePalette;
 
 export const darkPalette = {
   // Base surfaces - softer dark with better contrast
@@ -73,7 +90,7 @@ export const darkPalette = {
   '--chart-3': '43 96% 56%',               // amber-400 - warm accent
   '--chart-4': '262 83% 74%',              // violet-300 - purple accent
   '--chart-5': '346 77% 60%',              // rose-400 - pink accent
-} as const;
+} satisfies ThemePalette;
 
 // WHY: Helper to validate contrast ratios for accessibility
 export function validateContrastRatio(
@@ -97,8 +114,8 @@ export function getCurrentComputedValue(variable: string): string {
   return computed || '';
 }
 
-// WHY: Apply palette to document root
-export function applyPalette(palette: typeof lightPalette | typeof darkPalette) {
+// WHY: Apply palette to document root - now uses structural type
+export function applyPalette(palette: ThemePalette) {
   if (typeof window === 'undefined') return;
   
   Object.entries(palette).forEach(([variable, value]) => {
