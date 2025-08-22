@@ -286,14 +286,14 @@ export function TrendChart({
                         {payload.map((entry: any, index: number) => {
                           if (entry.name === 'Daily Value' && entry.value !== null && entry.value !== undefined && !isNaN(entry.value)) {
                             return (
-                              <p key={`daily-${index}-${entry.value}`} className="text-primary">
+                              <p key={`daily-${index}-${entry.value}-${entry.dataKey}`} className="text-primary">
                                 Daily Value: {entry.value} {unit}
                               </p>
                             );
                           }
                           if (entry.name === '7-Day Average' && entry.value !== null && entry.value !== undefined && !isNaN(entry.value)) {
                             return (
-                              <p key={`avg-${index}-${entry.value}`} className="text-secondary">
+                              <p key={`avg-${index}-${entry.value}-${entry.dataKey}`} className="text-secondary">
                                 7-Day Average: {entry.value} {unit}
                               </p>
                             );
@@ -319,6 +319,7 @@ export function TrendChart({
                   if (payload.value !== null && payload.value !== undefined && !isNaN(payload.value)) {
                     return (
                       <circle
+                        key={`dot-${payload.date}-${payload.value}`}
                         cx={cx}
                         cy={cy}
                         r={4}
@@ -328,7 +329,7 @@ export function TrendChart({
                       />
                     );
                   }
-                  return <circle cx={0} cy={0} r={0} />; // Return empty circle instead of null
+                  return <circle key={`empty-dot-${payload.date}`} cx={0} cy={0} r={0} />; // Return empty circle instead of null
                 }}
                 activeDot={{ r: 6, stroke: chartColors.primary, strokeWidth: 2, fill: chartColors.primary }}
                 name="Daily Value"
