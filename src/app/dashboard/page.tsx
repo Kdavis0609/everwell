@@ -94,17 +94,9 @@ export default function DashboardPage() {
       setUserId(uid);
 
       // Load user profile
-      try {
-        const profile = await getProfile(supabase);
-        if (!cancelled && profile) {
-          setProfile(profile);
-        }
-      } catch (error) {
-        logError('[getProfile.query]', error);
-        if (!cancelled) {
-          // WHY: Don't show error toast for profile loading - it's optional
-          console.warn('Profile loading failed, continuing without profile');
-        }
+      const profile = await getProfile(supabase);
+      if (!cancelled && profile) {
+        setProfile(profile);
       }
 
       // Load enabled metrics and recent measurements
@@ -141,7 +133,7 @@ export default function DashboardPage() {
       // Initialize form values using metric.slug as keys
       const initialForm: Record<string, any> = {};
       metrics.forEach(metric => {
-        initialForm[metric.slug] = null;
+        initialForm[metric.slug || ''] = null;
       });
       setForm(initialForm);
     } catch (error) {
@@ -424,14 +416,15 @@ export default function DashboardPage() {
       const supabase = createSupabaseBrowser();
       const measurements: MetricValue[] = enabledMetrics
         .map(metric => {
-          const value = form[metric.slug];
+          const metricSlug = metric.slug || '';
+          const value = form[metricSlug];
           if (value === null || value === undefined || value === '') {
             return null;
           }
 
           let measurement: MetricValue = {
             metric_id: metric.id,
-            slug: metric.slug
+            slug: metricSlug
           };
 
           switch (metric.input_kind) {
@@ -439,7 +432,7 @@ export default function DashboardPage() {
             case 'integer':
               const numValue = parseFloat(value);
               if (isNaN(numValue)) {
-                setFieldErrors(prev => ({ ...prev, [metric.slug]: 'Please enter a valid number' }));
+                setFieldErrors(prev => ({ ...prev, [metricSlug]: 'Please enter a valid number' }));
                 return null;
               }
               measurement.value_numeric = numValue;
@@ -451,7 +444,7 @@ export default function DashboardPage() {
               measurement.value_bool = Boolean(value);
               break;
             case 'pair':
-              if (metric.slug === 'blood_pressure' && value && typeof value === 'object') {
+              if (metricSlug === 'blood_pressure' && value && typeof value === 'object') {
                 // Blood pressure is stored as {systolic: number, diastolic: number}
                 measurement.value_numeric = value.systolic;
                 measurement.value_text = value.diastolic.toString();
@@ -492,7 +485,7 @@ export default function DashboardPage() {
       // Clear form and reload data
       const initialForm: Record<string, any> = {};
       enabledMetrics.forEach(metric => {
-        initialForm[metric.slug] = null;
+        initialForm[metric.slug || ''] = null;
       });
       setForm(initialForm);
       setHasChanges(false);
@@ -593,7 +586,9 @@ export default function DashboardPage() {
     recentMeasurements.forEach(measurement => {
       const metricName = MetricsService.getMeasurementDisplayName(measurement);
       const metricSlug = measurement.metric_definitions.slug;
-      uniqueMetrics.set(metricSlug, metricName);
+      if (metricSlug) { // Only add metrics with valid slugs
+        uniqueMetrics.set(metricSlug, metricName);
+      }
     });
     return Array.from(uniqueMetrics.entries()).map(([slug, name]) => ({ slug, name }));
   };
@@ -686,16 +681,17 @@ export default function DashboardPage() {
                         <form onSubmit={(e) => { e.preventDefault(); saveMetrics(); }} className="space-y-6">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {enabledMetrics.map((metric) => {
+                              const metricKey = metric.slug || metric.id || `metric-${metric.metric_id || 'unknown'}`;
                               return (
-                                <div key={metric.slug ?? metric.id} className={metric.input_kind === 'text' ? 'md:col-span-2' : ''}>
+                                <div key={metricKey} className={metric.input_kind === 'text' ? 'md:col-span-2' : ''}>
                                   <MetricInput
-                                    key={metric.slug ?? metric.id}
+                                    key={metricKey}
                                     metric={metric}
-                                    value={form[metric.slug]}
-                                    onChange={(value) => handleMetricChange(metric.slug, value)}
+                                    value={form[metric.slug || '']}
+                                    onChange={(value) => handleMetricChange(metric.slug || '', value)}
                                     onFocus={handleInputFocus}
                                     onBlur={handleInputBlur}
-                                    error={fieldErrors[metric.slug]}
+                                    error={fieldErrors[metric.slug || '']}
                                   />
                                 </div>
                               );
@@ -856,7 +852,7 @@ export default function DashboardPage() {
                                 <SelectContent>
                                   <SelectItem value="all">All Metrics</SelectItem>
                                   {getAvailableMetricsForFilter().map((metric) => (
-                                    <SelectItem key={metric.slug} value={metric.slug}>
+                                    <SelectItem key={metric.slug || `filter-${metric.name}`} value={metric.slug}>
                                       {metric.name}
                                     </SelectItem>
                                   ))}
