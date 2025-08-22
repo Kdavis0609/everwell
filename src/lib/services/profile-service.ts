@@ -14,16 +14,34 @@ export async function getProfile(sb: SupabaseClient) {
     }
 
     const uid = session.user.id;
+    console.log('getProfile: User ID:', uid);
     const { data, error } = await sb
       .from('profiles')
-      .select('user_id, email, full_name, avatar_url')
-      .eq('user_id', uid)
+      .select('id, email, full_name, avatar_url')
+      .eq('id', uid)
       .maybeSingle();
 
     if (error) { 
+      console.log('getProfile query error:', error);
       logError('getProfile.query', error, { uid }); 
       return null; // WHY: Return null instead of throwing for query errors
     }
+    
+    // Debug logging to understand what's happening
+    console.log('getProfile query result:', { uid, hasData: !!data, data });
+    
+    // Transform the data to match the Profile type (id -> user_id)
+    if (data) {
+      return {
+        user_id: data.id,
+        email: data.email,
+        full_name: data.full_name,
+        avatar_url: data.avatar_url,
+        created_at: data.created_at,
+        updated_at: data.updated_at
+      };
+    }
+    
     return data;
   } catch (error) {
     logError('getProfile.catch', error);
@@ -45,7 +63,7 @@ export async function ensureProfile(sb: SupabaseClient) {
 
     const user = session.user;
     const payload = {
-      user_id: user.id,
+      id: user.id,
       email: user.email ?? null,
       full_name: user.user_metadata?.full_name ?? null,
       avatar_url: user.user_metadata?.avatar_url ?? null,
@@ -53,7 +71,7 @@ export async function ensureProfile(sb: SupabaseClient) {
 
     const { error } = await sb
       .from('profiles')
-      .upsert(payload, { onConflict: 'user_id' }); // requires unique index on user_id
+      .upsert(payload, { onConflict: 'id' }); // requires unique index on id
 
     if (error) { 
       logError('ensureProfile.upsert', error, { uid: user.id }); 
