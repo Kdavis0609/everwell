@@ -14,7 +14,6 @@ export async function getProfile(sb: SupabaseClient) {
     }
 
     const uid = session.user.id;
-    console.log('getProfile: User ID:', uid);
     const { data, error } = await sb
       .from('profiles')
       .select('id, email, full_name, avatar_url')
@@ -22,13 +21,9 @@ export async function getProfile(sb: SupabaseClient) {
       .maybeSingle();
 
     if (error) { 
-      console.log('getProfile query error:', error);
       logError('getProfile.query', error, { uid }); 
       return null; // WHY: Return null instead of throwing for query errors
     }
-    
-    // Debug logging to understand what's happening
-    console.log('getProfile query result:', { uid, hasData: !!data, data });
     
     // Transform the data to match the Profile type (id -> user_id)
     if (data) {
