@@ -1,7 +1,7 @@
 // src/app/login/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowser } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +18,8 @@ import Link from 'next/link';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { parseRedirectTo } from '@/lib/utils/redirect';
 
-export default function LoginPage() {
+// WHY: Separate component that uses useSearchParams to avoid static generation issues
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('magic-link');
@@ -133,133 +134,160 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-green-50 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-primary rounded-full flex items-center justify-center mb-4">
-            <Heart className="w-6 h-6 text-primary-foreground" />
-          </div>
-          <CardTitle className="text-2xl">Welcome to EverWell</CardTitle>
-          <CardDescription>Sign in to track your health metrics</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="magic-link">Magic Link</TabsTrigger>
-              <TabsTrigger value="email-password">Email & Password</TabsTrigger>
-            </TabsList>
+    <Card className="w-full max-w-md">
+      <CardHeader className="text-center">
+        <div className="mx-auto w-12 h-12 bg-primary rounded-full flex items-center justify-center mb-4">
+          <Heart className="w-6 h-6 text-primary-foreground" />
+        </div>
+        <CardTitle className="text-2xl">Welcome to EverWell</CardTitle>
+        <CardDescription>Sign in to track your health metrics</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="magic-link">Magic Link</TabsTrigger>
+            <TabsTrigger value="email-password">Email & Password</TabsTrigger>
+          </TabsList>
 
-            <TabsContent value="magic-link" className="space-y-4">
-              <Auth
-                supabaseClient={supabase}
-                view="magic_link"
-                redirectTo={`${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/auth/callback`}
-                appearance={{
-                  theme: ThemeSupa,
-                  variables: {
-                    default: {
-                      colors: {
-                        brand: '#2563EB',
-                        brandAccent: '#1D4ED8',
-                        inputText: '#1F2937',
-                        inputBackground: '#FFFFFF',
-                        inputBorder: '#E5E7EB',
-                      },
+          <TabsContent value="magic-link" className="space-y-4">
+            <Auth
+              supabaseClient={supabase}
+              view="magic_link"
+              redirectTo={`${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/auth/callback`}
+              appearance={{
+                theme: ThemeSupa,
+                variables: {
+                  default: {
+                    colors: {
+                      brand: '#2563EB',
+                      brandAccent: '#1D4ED8',
+                      inputText: '#1F2937',
+                      inputBackground: '#FFFFFF',
+                      inputBorder: '#E5E7EB',
                     },
                   },
-                }}
-                providers={[]}
-              />
-            </TabsContent>
+                },
+              }}
+              providers={[]}
+            />
+          </TabsContent>
 
-            <TabsContent value="email-password" className="space-y-4">
-              <form onSubmit={handleEmailPasswordSignIn} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="Enter your email"
-                      value={formData.email}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                      className="pl-10"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Enter your password"
-                      value={formData.password}
-                      onChange={(e) => handleInputChange('password', e.target.value)}
-                      className="pl-10 pr-10"
-                      required
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="remember-me"
-                    checked={formData.rememberMe}
-                    onCheckedChange={(checked) => handleInputChange('rememberMe', checked as boolean)}
+          <TabsContent value="email-password" className="space-y-4">
+            <form onSubmit={handleEmailPasswordSignIn} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="Enter your email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    className="pl-10"
+                    required
                   />
-                  <Label htmlFor="remember-me" className="text-sm">
-                    Remember me
-                  </Label>
                 </div>
+              </div>
 
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Signing in...' : 'Sign in'}
-                </Button>
-
-                <div className="text-center space-y-2">
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={formData.password}
+                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    className="pl-10 pr-10"
+                    required
+                  />
                   <Button
                     type="button"
-                    variant="link"
-                    className="text-sm"
-                    onClick={handleForgotPassword}
-                    disabled={loading || !formData.email}
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
                   >
-                    Forgot password?
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
                   </Button>
-                  <div className="text-sm text-muted-foreground">
-                    Don't have an account?{' '}
-                    <Link href="/signup" className="text-primary hover:underline">
-                      Create account
-                    </Link>
-                  </div>
                 </div>
-              </form>
-            </TabsContent>
-          </Tabs>
+              </div>
 
-          <p className="text-xs text-muted-foreground mt-4 text-center">
-            By signing in, you agree to our Terms of Service and Privacy Policy
-          </p>
-        </CardContent>
-      </Card>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="remember-me"
+                  checked={formData.rememberMe}
+                  onCheckedChange={(checked) => handleInputChange('rememberMe', checked as boolean)}
+                />
+                <Label htmlFor="remember-me" className="text-sm">
+                  Remember me
+                </Label>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign in'}
+              </Button>
+
+              <div className="text-center space-y-2">
+                <Button
+                  type="button"
+                  variant="link"
+                  className="text-sm"
+                  onClick={handleForgotPassword}
+                  disabled={loading || !formData.email}
+                >
+                  Forgot password?
+                </Button>
+                <div className="text-sm text-muted-foreground">
+                  Don't have an account?{' '}
+                  <Link href="/signup" className="text-primary hover:underline">
+                    Create account
+                  </Link>
+                </div>
+              </div>
+            </form>
+          </TabsContent>
+        </Tabs>
+
+        <p className="text-xs text-muted-foreground mt-4 text-center">
+          By signing in, you agree to our Terms of Service and Privacy Policy
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// WHY: Loading fallback for Suspense boundary
+function LoginFormFallback() {
+  return (
+    <Card className="w-full max-w-md">
+      <CardHeader className="text-center">
+        <div className="mx-auto w-12 h-12 bg-primary rounded-full flex items-center justify-center mb-4">
+          <Heart className="w-6 h-6 text-primary-foreground" />
+        </div>
+        <CardTitle className="text-2xl">Welcome to EverWell</CardTitle>
+        <CardDescription>Loading...</CardDescription>
+      </CardHeader>
+      <CardContent className="flex justify-center py-8">
+        <LoadingSpinner />
+      </CardContent>
+    </Card>
+  );
+}
+
+// WHY: Main page component with Suspense boundary to handle useSearchParams
+export default function LoginPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-green-50 p-4">
+      <Suspense fallback={<LoginFormFallback />}>
+        <LoginForm />
+      </Suspense>
     </div>
   );
 }
