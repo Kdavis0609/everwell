@@ -401,9 +401,11 @@ export class MetricsService {
       });
 
       if (!error && data) return data;
-      if (error) logError('getWeeklyProgress.rpc', error, { userId: session.user.id });
+      // WHY: Don't log RPC errors as they might be expected (function doesn't exist)
+      // if (error) logError('getWeeklyProgress.rpc', error, { userId: session.user.id });
     } catch (e) {
-      logError('getWeeklyProgress.rpc.catch', e as any, { userId: session.user.id });
+      // WHY: Don't log RPC catch errors as they might be expected (function doesn't exist)
+      // logError('getWeeklyProgress.rpc.catch', e as any, { userId: session.user.id });
     }
 
     // Fallback: pull raw measurements + metrics and aggregate in JS

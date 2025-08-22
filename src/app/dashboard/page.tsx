@@ -102,7 +102,8 @@ export default function DashboardPage() {
       } catch (error) {
         logError('[getProfile.query]', error);
         if (!cancelled) {
-          toast.error('Authentication error. Please sign in again.');
+          // WHY: Don't show error toast for profile loading - it's optional
+          console.warn('Profile loading failed, continuing without profile');
         }
       }
 
@@ -185,8 +186,13 @@ export default function DashboardPage() {
       setWeeklyLoading(true);
       
       // Load weekly progress
-      const progress = await MetricsService.getWeeklyProgress(supabase);
-      setWeeklyProgress(progress);
+      try {
+        const progress = await MetricsService.getWeeklyProgress(supabase);
+        setWeeklyProgress(progress);
+      } catch (progressError) {
+        console.warn('Weekly progress loading failed:', progressError);
+        setWeeklyProgress([]); // WHY: Set empty array instead of breaking
+      }
       
       // Load weekly plan (get last Monday's plan)
       try {
@@ -196,12 +202,12 @@ export default function DashboardPage() {
           setWeeklyPlan(plan);
         }
       } catch (planError) {
-        console.error('Error loading weekly plan:', planError);
-        // Weekly plan is optional - don't break the dashboard
+        console.warn('Weekly plan loading failed:', planError);
+        // WHY: Weekly plan is optional - don't break the dashboard
       }
     } catch (error) {
-      console.error('Error loading weekly data:', error);
-      // Don't throw error for weekly data - it's optional
+      console.warn('Weekly data loading failed:', error);
+      // WHY: Don't throw error for weekly data - it's optional
       setWeeklyProgress([]);
     } finally {
       setWeeklyLoading(false);
@@ -388,6 +394,8 @@ export default function DashboardPage() {
           setInsightsError('Add a few more days of entries to generate insights. We need at least 5 days of data.');
         } else if (result.reason === 'no_openai_key') {
           setInsightsError('OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.');
+        } else if (result.reason === 'usage_limit_exceeded') {
+          setInsightsError(result.message || 'Daily usage limit exceeded. Please try again tomorrow.');
         } else {
           setInsightsError(result.message || 'Failed to generate insights');
         }
@@ -714,6 +722,12 @@ export default function DashboardPage() {
                       <CardDescription>
                         Get personalized insights and recommendations based on your health data
                       </CardDescription>
+                      {insights?.usage && (
+                        <div className="text-xs text-muted-foreground">
+                          Used {insights.usage.todayCount}/{insights.usage.dailyLimit} today
+                          {insights.cached && <span className="ml-2 text-blue-600">(cached)</span>}
+                        </div>
+                      )}
                     </CardHeader>
                     <CardContent>
                       {insightsLoading ? (

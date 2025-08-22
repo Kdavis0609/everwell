@@ -130,7 +130,7 @@ export function TrendChart({
                   </SelectTrigger>
                   <SelectContent>
                     {availableMetrics.map((m) => (
-                      <SelectItem key={m.id} value={m.slug}>
+                      <SelectItem key={`metric-${m.id}`} value={m.slug}>
                         {m.name}
                       </SelectItem>
                     ))}
@@ -143,7 +143,7 @@ export function TrendChart({
                 <label className="text-xs font-medium text-muted-foreground">Range:</label>
                 <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange} disabled>
                   {rangeOptions.map((option) => (
-                    <ToggleGroupItem key={option.value} value={option.value.toString()} size="sm">
+                    <ToggleGroupItem key={`range-${option.value}`} value={option.value.toString()} size="sm">
                       {option.label}
                     </ToggleGroupItem>
                   ))}
@@ -181,7 +181,7 @@ export function TrendChart({
                   </SelectTrigger>
                   <SelectContent>
                     {availableMetrics.map((m) => (
-                      <SelectItem key={m.id} value={m.slug}>
+                      <SelectItem key={`metric-${m.id}`} value={m.slug}>
                         {m.name}
                       </SelectItem>
                     ))}
@@ -192,13 +192,13 @@ export function TrendChart({
               {/* Range Selector */}
               <div className="flex items-center space-x-2">
                 <label className="text-xs font-medium text-muted-foreground">Range:</label>
-                <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange}>
-                  {rangeOptions.map((option) => (
-                    <ToggleGroupItem key={option.value} value={option.value.toString()} size="sm">
-                      {option.label}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
+                                  <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange}>
+                    {rangeOptions.map((option) => (
+                      <ToggleGroupItem key={`range-${option.value}`} value={option.value.toString()} size="sm">
+                        {option.label}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
               </div>
             </div>
           </div>
@@ -237,26 +237,26 @@ export function TrendChart({
                 <SelectTrigger className="w-32 h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  {availableMetrics.map((m) => (
-                    <SelectItem key={m.id} value={m.slug}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+                                  <SelectContent>
+                    {availableMetrics.map((m) => (
+                      <SelectItem key={`metric-${m.id}`} value={m.slug}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
               </Select>
             </div>
 
             {/* Range Selector */}
             <div className="flex items-center space-x-2">
               <label className="text-xs font-medium text-muted-foreground">Range:</label>
-              <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange}>
-                {rangeOptions.map((option) => (
-                  <ToggleGroupItem key={option.value} value={option.value.toString()} size="sm">
-                    {option.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+                                <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange}>
+                    {rangeOptions.map((option) => (
+                      <ToggleGroupItem key={`range-${option.value}`} value={option.value.toString()} size="sm">
+                        {option.label}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
             </div>
           </div>
         </div>
@@ -286,14 +286,14 @@ export function TrendChart({
                         {payload.map((entry: any, index: number) => {
                           if (entry.name === 'Daily Value' && entry.value !== null && entry.value !== undefined && !isNaN(entry.value)) {
                             return (
-                              <p key={`daily-${entry.name}-${entry.value}`} className="text-primary">
+                              <p key={`daily-${index}-${entry.value}`} className="text-primary">
                                 Daily Value: {entry.value} {unit}
                               </p>
                             );
                           }
                           if (entry.name === '7-Day Average' && entry.value !== null && entry.value !== undefined && !isNaN(entry.value)) {
                             return (
-                              <p key={`avg-${entry.name}-${entry.value}`} className="text-secondary">
+                              <p key={`avg-${index}-${entry.value}`} className="text-secondary">
                                 7-Day Average: {entry.value} {unit}
                               </p>
                             );

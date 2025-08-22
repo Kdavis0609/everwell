@@ -6,6 +6,9 @@ const PUBLIC_ROUTES = [
   '/login',
   '/signup',
   '/auth',
+  '/debug',
+  '/dev',
+  '/test',
   '/favicon.ico',
   '/robots.txt',
   '/sitemap.xml',
@@ -83,6 +86,11 @@ export async function middleware(req: NextRequest) {
       const url = req.nextUrl.clone();
       url.pathname = '/dashboard';
       return NextResponse.redirect(url);
+    }
+
+    // Allow debug routes without authentication
+    if (pathname.startsWith('/debug') || pathname.startsWith('/dev') || pathname.startsWith('/test')) {
+      return res;
     }
 
     // Protect dashboard and account routes

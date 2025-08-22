@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServer } from '@/lib/supabase/server';
 import { ensureProfile } from '@/lib/services/profile-service';
+import { getInsightsProvider } from '@/lib/ai';
+import { InsightsUsageService } from '@/lib/ai/usage-service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +28,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if OpenAI API key is available
+    // Check usage limits
+    const usageInfo = await InsightsUsageService.checkUsageLimit(supabase, user.id);
+    if (!usageInfo.canGenerate) {
+      return NextResponse.json(
+        { 
+          ok: false, 
+          reason: 'usage_limit_exceeded', 
+          message: `Daily limit exceeded. You've used ${usageInfo.todayCount}/${usageInfo.dailyLimit} insights today.` 
+        },
+        { status: 429 }
+      );
+    }
+
+    // Check if OpenAI API key is available (provider will handle this, but we check early for better UX)
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
         { 
@@ -80,15 +95,89 @@ export async function POST(request: NextRequest) {
 
     // Process measurements into a structured format for AI
     const processedData = processMeasurementsForAI(measurements || []);
+    const payload = {
+      days: 30,
+      dataByDate: processedData
+    };
 
-    // Generate AI insights
-    const insights = await generateAIInsights(processedData);
+    // Check cache first
+    const cachedInsights = await InsightsUsageService.getCachedInsights(supabase, user.id, payload);
+    if (cachedInsights && cachedInsights.isValid) {
+      console.log(`[insights] Cache hit for user ${user.id}`);
+      return NextResponse.json({
+        ok: true,
+        insights: cachedInsights.content,
+        plan: {
+          focus_areas: cachedInsights.content.recommendations,
+          weekly_goals: cachedInsights.content.recommendations.slice(0, 3)
+        },
+        cached: true,
+        usage: {
+          todayCount: usageInfo.todayCount,
+          dailyLimit: usageInfo.dailyLimit
+        }
+      });
+    }
 
-    return NextResponse.json({
-      ok: true,
-      insights: insights.insights,
-      plan: insights.plan
-    });
+    // Generate AI insights using the provider abstraction
+    try {
+      const provider = getInsightsProvider();
+      const insights = await provider.generateInsights(payload);
+
+      // Cache the result
+      await InsightsUsageService.cacheInsights(supabase, user.id, payload, insights);
+
+      // Increment usage count
+      await InsightsUsageService.incrementUsage(supabase, user.id);
+
+      // Clear old cache entries (background task)
+      InsightsUsageService.clearOldCache(supabase, user.id).catch(error => {
+        console.error('Failed to clear old cache:', error);
+      });
+
+      return NextResponse.json({
+        ok: true,
+        insights: insights,
+        plan: {
+          focus_areas: insights.recommendations,
+          weekly_goals: insights.recommendations.slice(0, 3)
+        },
+        cached: false,
+        usage: {
+          todayCount: usageInfo.todayCount + 1,
+          dailyLimit: usageInfo.dailyLimit
+        }
+      });
+    } catch (error) {
+      console.error('AI insights generation error:', error);
+      
+      // Handle specific provider errors
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          return NextResponse.json(
+            { ok: false, reason: 'timeout', message: 'Request timed out. Please try again.' },
+            { status: 408 }
+          );
+        }
+        if (error.message.includes('API key')) {
+          return NextResponse.json(
+            { ok: false, reason: 'no_openai_key', message: 'OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.' },
+            { status: 400 }
+          );
+        }
+        if (error.message.includes('rate limit')) {
+          return NextResponse.json(
+            { ok: false, reason: 'rate_limit', message: 'Rate limit exceeded. Please try again later.' },
+            { status: 429 }
+          );
+        }
+      }
+      
+      return NextResponse.json(
+        { ok: false, reason: 'server_error', message: 'Failed to generate insights. Please try again.' },
+        { status: 500 }
+      );
+    }
 
   } catch (error) {
     console.error('Insights API error:', error);
@@ -131,88 +220,4 @@ function processMeasurementsForAI(measurements: any[]) {
   });
 
   return dailyData;
-}
-
-async function generateAIInsights(data: Record<string, any>) {
-  const systemPrompt = `You are a supportive health coach. Analyze the provided daily health metrics and provide:
-
-1. A brief summary (max 120 words) of the user's health patterns
-2. 3 specific, actionable recommendations for the next week
-3. 1-2 gentle observations about patterns (if any concerning trends)
-
-Keep the tone encouraging and supportive. Do not make medical claims or give medical advice. Focus on lifestyle and wellness improvements.
-
-Format your response as JSON:
-{
-  "summary": "brief summary here",
-  "recommendations": ["recommendation 1", "recommendation 2", "recommendation 3"],
-  "observations": ["observation 1", "observation 2"]
-}`;
-
-  const userPrompt = `Here are the user's daily health metrics for the past 30 days:
-
-${JSON.stringify(data, null, 2)}
-
-Please analyze this data and provide insights as requested.`;
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 500
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`OpenAI API error: ${response.statusText}`);
-  }
-
-  const result = await response.json();
-  const content = result.choices[0]?.message?.content;
-  
-  if (!content) {
-    throw new Error('No content received from OpenAI');
-  }
-
-  try {
-    const parsed = JSON.parse(content);
-    return {
-      insights: {
-        summary: parsed.summary || 'No summary available',
-        recommendations: parsed.recommendations || [],
-        observations: parsed.observations || []
-      },
-      plan: {
-        focus_areas: parsed.recommendations || [],
-        weekly_goals: parsed.recommendations?.slice(0, 3) || []
-      }
-    };
-  } catch (parseError) {
-    console.error('Failed to parse OpenAI response:', parseError);
-    // Fallback to a simple response
-    return {
-      insights: {
-        summary: 'Your health data shows consistent tracking. Keep up the great work!',
-        recommendations: [
-          'Continue tracking your daily metrics',
-          'Set small, achievable goals for the week',
-          'Stay consistent with your routine'
-        ],
-        observations: []
-      },
-      plan: {
-        focus_areas: ['Consistency', 'Goal Setting', 'Routine'],
-        weekly_goals: ['Track daily', 'Set goals', 'Stay consistent']
-      }
-    };
-  }
 }
