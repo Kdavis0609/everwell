@@ -18,7 +18,7 @@ type VarKey =
 // WHY: Structural type that both palettes can satisfy
 export type ThemePalette = Record<VarKey, string>;
 
-export const lightPalette = {
+export const lightPalette: ThemePalette = {
   // Base surfaces - improved contrast and cleaner whites
   '--background': '210 20% 98%',           // slate-50 - softer than pure white
   '--foreground': '222.2 47.4% 11.2%',     // slate-900 - better contrast
@@ -53,9 +53,9 @@ export const lightPalette = {
   '--chart-3': '43 96% 56%',               // amber-400 - warm accent
   '--chart-4': '262 83% 74%',              // violet-300 - purple accent
   '--chart-5': '346 77% 60%',              // rose-400 - pink accent
-} satisfies ThemePalette;
+};
 
-export const darkPalette = {
+export const darkPalette: ThemePalette = {
   // Base surfaces - softer dark with better contrast
   '--background': '222 24% 10%',           // slate-900-ish - not pure black
   '--foreground': '210 40% 96%',           // light gray for text
@@ -90,7 +90,7 @@ export const darkPalette = {
   '--chart-3': '43 96% 56%',               // amber-400 - warm accent
   '--chart-4': '262 83% 74%',              // violet-300 - purple accent
   '--chart-5': '346 77% 60%',              // rose-400 - pink accent
-} satisfies ThemePalette;
+};
 
 // WHY: Helper to validate contrast ratios for accessibility
 export function validateContrastRatio(
