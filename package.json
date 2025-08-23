@@ -14,7 +14,10 @@
     "test:ui:smoke": "playwright test tests/tailwind.smoke.spec.ts",
     "check:tailwind": "node -e \"require('child_process').execSync(process.platform === 'win32' ? 'powershell -ExecutionPolicy Bypass -File scripts/check-tailwind.ps1' : 'bash scripts/check-tailwind.sh', {stdio: 'inherit'})\"",
     "ci:verify-ui": "node scripts/ci-verify-ui.js",
-    "tw:test": "node scripts/tw-build-test.js"
+    "tw:test": "node scripts/tw-build-test.js",
+    "test:openai": "node scripts/test-openai.js",
+    "test:insights": "node scripts/test-insights-api.js",
+    "check:errors": "node scripts/check-console-errors.js"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.10",

@@ -58,7 +58,7 @@ async function sendDailyEmail(userId: string) {
   // Get user preferences to check if reminders are enabled
   const preferences = await MetricsService.getUserPreferences(supabase);
   if (!preferences.reminders?.daily_email) {
-    console.log(`Daily email reminders disabled for user ${userId}`);
+          // Daily email reminders disabled for user
     return;
   }
 
@@ -95,7 +95,7 @@ async function sendDailyEmail(userId: string) {
     throw new Error('Failed to send email');
   }
 
-  console.log(`Daily email sent to ${profile.email}`);
+      // Daily email sent successfully
 }
 
 async function sendDailyEmailsToAllUsers() {
@@ -112,7 +112,7 @@ async function sendDailyEmailsToAllUsers() {
   }
 
   if (!users || users.length === 0) {
-    console.log('No users with daily email reminders enabled');
+    // No users with daily email reminders enabled
     return;
   }
 

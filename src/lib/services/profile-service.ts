@@ -14,7 +14,7 @@ export async function getProfile(sb: SupabaseClient) {
     }
 
     const uid = session.user.id;
-    console.log('Attempting to fetch profile for user:', uid);
+                    // Attempting to fetch profile for user
     
     const { data, error } = await sb
       .from('profiles')
@@ -23,18 +23,12 @@ export async function getProfile(sb: SupabaseClient) {
       .maybeSingle();
 
     if (error) { 
-      console.error('Profile query error:', error);
-      console.error('Error details:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
+                      console.warn('Profile query error:', error);
       logError('getProfile.query', error, { uid }); 
       return null; // WHY: Return null instead of throwing for query errors
     }
     
-    console.log('Profile query result:', { data, error });
+                    // Profile query completed
     
     // Transform the data to match the Profile type (id -> user_id)
     if (data) {
@@ -49,7 +43,7 @@ export async function getProfile(sb: SupabaseClient) {
     }
     
     // If no profile exists, try to create one
-    console.log('No profile found, attempting to create one...');
+                    // No profile found, attempting to create one
     try {
       await ensureProfile(sb);
       // Try to fetch the profile again
@@ -60,7 +54,7 @@ export async function getProfile(sb: SupabaseClient) {
         .maybeSingle();
         
       if (newError) {
-        console.error('Failed to fetch profile after creation:', newError);
+                          console.warn('Failed to fetch profile after creation:', newError);
         return null;
       }
       
@@ -75,7 +69,7 @@ export async function getProfile(sb: SupabaseClient) {
         };
       }
     } catch (createError) {
-      console.error('Failed to create profile:', createError);
+                      console.warn('Failed to create profile:', createError);
     }
     
     return null;
@@ -104,25 +98,19 @@ export async function ensureProfile(sb: SupabaseClient) {
       // Removed email and avatar_url since columns don't exist in database
     };
 
-    console.log('Attempting to upsert profile:', payload);
+                    // Attempting to upsert profile
     
     const { error } = await sb
       .from('profiles')
       .upsert(payload, { onConflict: 'id' }); // requires unique index on id
 
     if (error) { 
-      console.error('Profile upsert error:', error);
-      console.error('Upsert error details:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
+                      console.warn('Profile upsert error:', error);
       logError('ensureProfile.upsert', error, { uid: user.id }); 
       return; // WHY: Return early instead of throwing for upsert errors
     }
     
-    console.log('Profile upsert successful');
+                    // Profile upsert successful
   } catch (error) {
     logError('ensureProfile.catch', error);
     return; // WHY: Return early for any unexpected errors

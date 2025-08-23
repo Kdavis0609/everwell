@@ -109,13 +109,12 @@ export default function DashboardPage() {
         } else if (!cancelled) {
           console.warn('No profile returned, continuing without profile');
         }
-      } catch (profileError) {
-        console.error('Profile loading error:', profileError);
-        // Don't fail the entire dashboard load for profile errors
-        if (!cancelled) {
-          console.warn('Profile loading failed, continuing without profile');
-        }
-      }
+                        } catch (profileError) {
+                    // Don't fail the entire dashboard load for profile errors
+                    if (!cancelled) {
+                      console.warn('Profile loading failed, continuing without profile');
+                    }
+                  }
 
       // Load enabled metrics and recent measurements
       try {
@@ -125,9 +124,8 @@ export default function DashboardPage() {
         await loadWeeklyData(supabase);
         await calculateHeroStats(supabase);
       } catch (error) {
-        console.error('Dashboard data loading error:', error);
-        logError('[dashboard.load]', error);
         if (!cancelled) {
+          console.warn('Dashboard data loading error:', error);
           setErr('Failed to load dashboard data. Please try refreshing the page.');
         }
       } finally {
@@ -157,7 +155,7 @@ export default function DashboardPage() {
       });
       setForm(initialForm);
     } catch (error) {
-      console.error('Error loading enabled metrics:', error);
+      console.warn('Error loading enabled metrics:', error);
       throw error;
     }
   };
@@ -175,7 +173,7 @@ export default function DashboardPage() {
       });
       setRecentMeasurements(sorted);
     } catch (error) {
-      console.error('Error loading recent measurements:', error);
+      console.warn('Error loading recent measurements:', error);
       throw error;
     }
   };
@@ -188,7 +186,7 @@ export default function DashboardPage() {
       // WHY: Don't pre-fill form with today's measurements - start with blank fields
       // The form will be initialized with null values in loadEnabledMetrics
     } catch (error) {
-      console.error('Error loading today\'s measurements:', error);
+      console.warn('Error loading today\'s measurements:', error);
       throw error;
     }
   };
@@ -251,7 +249,7 @@ export default function DashboardPage() {
         .order('measured_at', { ascending: true });
 
       if (error) {
-        console.error('Error fetching measurements for hero stats:', error);
+        console.warn('Error fetching measurements for hero stats:', error);
         return;
       }
 
@@ -318,7 +316,7 @@ export default function DashboardPage() {
         currentStreak
       });
     } catch (error) {
-      console.error('Error calculating hero stats:', error);
+      console.warn('Error calculating hero stats:', error);
     }
   };
 
@@ -388,7 +386,7 @@ export default function DashboardPage() {
       
       return plan;
     } catch (error) {
-      console.error('Error generating weekly plan:', error);
+      console.warn('Error generating weekly plan:', error);
       throw error;
     }
   };
@@ -428,7 +426,7 @@ export default function DashboardPage() {
       setInsights(result);
       toast.success('Insights generated successfully!');
     } catch (error) {
-      console.error('Error generating insights:', error);
+      console.warn('Error generating insights:', error);
       setInsightsError('Failed to generate insights. Please try again.');
       toast.error('Failed to generate insights');
     } finally {
@@ -532,7 +530,7 @@ export default function DashboardPage() {
         calculateHeroStats(supabase)
       ]);
     } catch (error) {
-      console.error('Error saving metrics:', error);
+      console.warn('Error saving metrics:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to save metrics';
       setErr(errorMessage);
       toast.error('Failed to save metrics', {

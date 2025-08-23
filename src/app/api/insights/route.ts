@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if OpenAI API key is available (provider will handle this, but we check early for better UX)
+    // Check if OpenAI API key is available
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
         { 
@@ -54,27 +54,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if API key is valid (not empty or placeholder)
+    if (process.env.OPENAI_API_KEY === 'your-api-key-here' || process.env.OPENAI_API_KEY.length < 10) {
+      return NextResponse.json(
+        { 
+          ok: false, 
+          reason: 'invalid_openai_key', 
+          message: 'OpenAI API key is invalid or not properly configured.' 
+        },
+        { status: 400 }
+      );
+    }
+
     // Fetch last 30 days of measurements
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const { data: measurements, error: measurementsError } = await supabase
-      .from('measurements')
-      .select(`
-        *,
-        metric_definitions!inner(
-          slug,
-          name,
-          unit,
-          input_kind
-        )
-      `)
-      .eq('user_id', user.id)
-      .gte('measured_at', thirtyDaysAgo.toISOString())
-      .order('measured_at', { ascending: true });
+    let measurements = [];
+    try {
+      const { data: measurementsData, error: measurementsError } = await supabase
+        .from('measurements')
+        .select(`
+          *,
+          metric_definitions!inner(
+            slug,
+            name,
+            unit,
+            input_kind
+          )
+        `)
+        .eq('user_id', user.id)
+        .gte('measured_at', thirtyDaysAgo.toISOString())
+        .order('measured_at', { ascending: true });
 
-    if (measurementsError) {
-      console.error('Error fetching measurements:', measurementsError);
+      if (measurementsError) {
+        console.error('Error fetching measurements:', measurementsError);
+        return NextResponse.json(
+          { ok: false, reason: 'fetch_error', message: 'Failed to fetch measurements' },
+          { status: 500 }
+        );
+      }
+      
+      measurements = measurementsData || [];
+    } catch (measurementsError) {
+      console.error('Exception fetching measurements:', measurementsError);
       return NextResponse.json(
         { ok: false, reason: 'fetch_error', message: 'Failed to fetch measurements' },
         { status: 500 }
@@ -82,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if we have enough data (at least 5 days with measurements)
-    const uniqueDays = new Set(measurements?.map((m: any) => m.measured_at.split('T')[0]) || []);
+    const uniqueDays = new Set(measurements?.map((m: any) => m.measured_at?.split('T')[0]).filter(Boolean) || []);
     if (uniqueDays.size < 5) {
       return NextResponse.json(
         { 
@@ -95,46 +118,85 @@ export async function POST(request: NextRequest) {
     }
 
     // Process measurements into a structured format for AI
-    const processedData = processMeasurementsForAI(measurements || []);
+    let processedData;
+    try {
+      processedData = processMeasurementsForAI(measurements || []);
+    } catch (processError) {
+      console.error('Error processing measurements for AI:', processError);
+      return NextResponse.json(
+        { ok: false, reason: 'process_error', message: 'Failed to process measurement data' },
+        { status: 500 }
+      );
+    }
+    
     const payload = {
       days: 30,
       dataByDate: processedData
     };
 
-    // Check cache first
-    const cachedInsights = await InsightsUsageService.getCachedInsights(supabase, user.id, payload);
-    if (cachedInsights && cachedInsights.isValid) {
-      console.log(`[insights] Cache hit for user ${user.id}`);
-      return NextResponse.json({
-        ok: true,
-        insights: cachedInsights.content,
-        plan: {
-          focus_areas: cachedInsights.content.recommendations,
-          weekly_goals: cachedInsights.content.recommendations.slice(0, 3)
-        },
-        cached: true,
-        usage: {
-          todayCount: usageInfo.todayCount,
-          dailyLimit: usageInfo.dailyLimit
-        }
-      });
+    // Check cache first (table may not exist yet)
+    let cachedInsights = null;
+    try {
+      cachedInsights = await InsightsUsageService.getCachedInsights(supabase, user.id, payload);
+      if (cachedInsights && cachedInsights.isValid) {
+        // Cache hit for user
+        return NextResponse.json({
+          ok: true,
+          insights: cachedInsights.content,
+          plan: {
+            focus_areas: cachedInsights.content.recommendations,
+            weekly_goals: cachedInsights.content.recommendations.slice(0, 3)
+          },
+          cached: true,
+          usage: {
+            todayCount: usageInfo.todayCount,
+            dailyLimit: usageInfo.dailyLimit
+          }
+        });
+      }
+    } catch (cacheError) {
+      console.warn('Cache check failed, continuing without cache:', cacheError);
     }
 
     // Generate AI insights using the provider abstraction
     try {
-      const provider = getInsightsProvider();
+      let provider;
+      try {
+        provider = getInsightsProvider();
+      } catch (providerError) {
+        console.error('Failed to initialize AI provider:', providerError);
+        return NextResponse.json(
+          { 
+            ok: false, 
+            reason: 'provider_error', 
+            message: 'AI provider initialization failed. Please check your OpenAI API configuration.' 
+          },
+          { status: 500 }
+        );
+      }
+      
       const insights = await provider.generateInsights(payload);
 
-      // Cache the result
-      await InsightsUsageService.cacheInsights(supabase, user.id, payload, insights);
+      // Cache the result (may fail if table doesn't exist)
+      try {
+        await InsightsUsageService.cacheInsights(supabase, user.id, payload, insights);
+      } catch (cacheError) {
+        console.warn('Failed to cache insights:', cacheError);
+      }
 
-      // Increment usage count
-      await InsightsUsageService.incrementUsage(supabase, user.id);
+      // Increment usage count (may fail if table doesn't exist)
+      try {
+        await InsightsUsageService.incrementUsage(supabase, user.id);
+      } catch (usageError) {
+        console.warn('Failed to increment usage:', usageError);
+      }
 
       // Clear old cache entries (background task)
-      InsightsUsageService.clearOldCache(supabase, user.id).catch(error => {
-        console.error('Failed to clear old cache:', error);
-      });
+      try {
+        await InsightsUsageService.clearOldCache(supabase, user.id);
+      } catch (clearError) {
+        console.warn('Failed to clear old cache:', clearError);
+      }
 
       return NextResponse.json({
         ok: true,
@@ -152,33 +214,56 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       console.error('AI insights generation error:', error);
       
-      // Handle specific provider errors
-      if (error instanceof Error) {
-        if (error.message.includes('timeout')) {
-          return NextResponse.json(
-            { ok: false, reason: 'timeout', message: 'Request timed out. Please try again.' },
-            { status: 408 }
-          );
-        }
-        if (error.message.includes('API key')) {
-          return NextResponse.json(
-            { ok: false, reason: 'no_openai_key', message: 'OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.' },
-            { status: 400 }
-          );
-        }
-        if (error.message.includes('rate limit')) {
-          return NextResponse.json(
-            { ok: false, reason: 'rate_limit', message: 'Rate limit exceeded. Please try again later.' },
-            { status: 429 }
-          );
-        }
-      }
+             // Handle specific provider errors
+       if (error instanceof Error) {
+         if (error.message.includes('timeout')) {
+           return NextResponse.json(
+             { ok: false, reason: 'timeout', message: 'Request timed out. Please try again.' },
+             { status: 408 }
+           );
+         }
+         if (error.message.includes('API key') || error.message.includes('authentication')) {
+           return NextResponse.json(
+             { ok: false, reason: 'no_openai_key', message: 'OpenAI API key is invalid or not configured properly.' },
+             { status: 400 }
+           );
+         }
+         if (error.message.includes('rate limit') || error.message.includes('quota')) {
+           return NextResponse.json(
+             { ok: false, reason: 'quota_exceeded', message: 'OpenAI quota exceeded. Please check your billing or upgrade your plan.' },
+             { status: 429 }
+           );
+         }
+         if (error.message.includes('insufficient_quota')) {
+           return NextResponse.json(
+             { ok: false, reason: 'quota_exceeded', message: 'OpenAI quota exceeded. Please check your billing or upgrade your plan.' },
+             { status: 429 }
+           );
+         }
+       }
       
+                   // If OpenAI is unavailable, return a helpful fallback response
       return NextResponse.json(
-        { ok: false, reason: 'server_error', message: 'Failed to generate insights. Please try again.' },
-        { status: 500 }
+        { 
+          ok: false, 
+          reason: 'openai_unavailable', 
+          message: 'AI insights are temporarily unavailable. Please check your OpenAI API key and billing status, or try again later.' 
+        },
+        { status: 503 }
       );
     }
+
+    // If we get here, something unexpected happened
+    console.error('Unexpected error in insights generation');
+    return NextResponse.json(
+      { 
+        ok: false, 
+        reason: 'unknown_error', 
+        message: 'An unexpected error occurred. Please try again later.' 
+      },
+      { status: 500 }
+    );
+  }
 
   } catch (error) {
     console.error('Insights API error:', error);
@@ -194,6 +279,12 @@ function processMeasurementsForAI(measurements: any[]) {
   const dailyData: Record<string, any> = {};
   
   measurements.forEach(measurement => {
+    // Skip invalid measurements
+    if (!measurement?.measured_at || !measurement?.metric_definitions?.slug) {
+      console.warn('Skipping invalid measurement:', measurement);
+      return;
+    }
+    
     const date = measurement.measured_at.split('T')[0];
     const slug = measurement.metric_definitions.slug;
     
@@ -203,19 +294,19 @@ function processMeasurementsForAI(measurements: any[]) {
     
     // Convert measurement to appropriate value
     let value = null;
-    if (measurement.value_numeric !== null) {
+    if (measurement.value_numeric !== null && measurement.value_numeric !== undefined) {
       value = measurement.value_numeric;
-    } else if (measurement.value_text !== null) {
+    } else if (measurement.value_text !== null && measurement.value_text !== undefined) {
       value = measurement.value_text;
-    } else if (measurement.value_bool !== null) {
+    } else if (measurement.value_bool !== null && measurement.value_bool !== undefined) {
       value = measurement.value_bool;
     }
     
     if (value !== null) {
       dailyData[date][slug] = {
         value,
-        unit: measurement.metric_definitions.unit,
-        name: measurement.metric_definitions.name
+        unit: measurement.metric_definitions.unit || null,
+        name: measurement.metric_definitions.name || slug
       };
     }
   });

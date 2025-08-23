@@ -54,7 +54,7 @@ export class InsightsUsageService {
   static async incrementUsage(sb: SupabaseClient, userId: string): Promise<void> {
     try {
       // Function may not exist in database, so we'll skip usage tracking for now
-      console.log('Usage tracking not available - skipping increment');
+      // Usage tracking not available - skipping increment
     } catch (error) {
       logError('incrementUsage.catch', error, { userId });
     }

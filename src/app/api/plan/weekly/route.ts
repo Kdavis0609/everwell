@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     try {
       profile = await ensureProfile(supabase);
     } catch (profileError) {
-      console.error('Profile creation failed:', profileError);
+      console.warn('Profile creation failed:', profileError);
       return NextResponse.json({ error: 'Failed to create user profile' }, { status: 500 });
     }
 
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(weeklyPlan);
   } catch (error) {
-    console.error('Error generating weekly plan:', error);
+            console.warn('Error generating weekly plan:', error);
     return NextResponse.json(
       { error: 'Failed to generate weekly plan' }, 
       { status: 500 }
@@ -173,7 +173,7 @@ Generate a weekly plan with 3 focused action items that will help the user make 
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('OpenAI API error:', errorText);
+            console.warn('OpenAI API error:', errorText);
     
     // Handle quota exceeded error specifically
     if (response.status === 429) {
@@ -202,8 +202,7 @@ Generate a weekly plan with 3 focused action items that will help the user make 
       return JSON.parse(content);
     }
   } catch (parseError) {
-    console.error('Error parsing AI response:', parseError);
-    console.error('Raw response:', content);
+            console.warn('Error parsing AI response:', parseError);
     
     // Fallback response
     return {

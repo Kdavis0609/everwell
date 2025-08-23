@@ -71,8 +71,6 @@ export async function middleware(req: NextRequest) {
       const redirectTo = req.nextUrl.searchParams.get('redirectTo');
       const safeRedirectTo = redirectTo && redirectTo.startsWith('/') ? redirectTo : '/dashboard';
       
-      console.log('[middleware.auth] Authenticated user on login, redirecting to:', safeRedirectTo);
-      
       const url = req.nextUrl.clone();
       url.pathname = safeRedirectTo;
       url.searchParams.delete('redirectTo');
@@ -81,8 +79,6 @@ export async function middleware(req: NextRequest) {
 
     // Handle signup page with existing session
     if (pathname === '/signup' && session) {
-      console.log('[middleware.auth] Authenticated user on signup, redirecting to dashboard');
-      
       const url = req.nextUrl.clone();
       url.pathname = '/dashboard';
       return NextResponse.redirect(url);
@@ -95,8 +91,6 @@ export async function middleware(req: NextRequest) {
 
     // Protect dashboard and account routes
     if ((pathname.startsWith('/dashboard') || pathname.startsWith('/account')) && !session) {
-      console.log('[middleware.auth] Unauthenticated user accessing protected route:', pathname);
-      
       const url = req.nextUrl.clone();
       url.pathname = '/login';
       url.searchParams.set('redirectTo', pathname);
