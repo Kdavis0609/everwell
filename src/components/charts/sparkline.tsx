@@ -66,7 +66,7 @@ export function Sparkline({
     isAnnotated: annotations.some(ann => ann.date === point.date)
   }));
 
-  const handlePointHover = (event: React.MouseEvent, point: any) => {
+  const handlePointHover = (event: React.MouseEvent | React.FocusEvent, point: any) => {
     if (!showTooltip) return;
     
     const element = event.currentTarget as HTMLElement;

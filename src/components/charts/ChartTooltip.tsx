@@ -15,7 +15,7 @@ export interface ChartTooltipProps {
   /** Unit of measurement */
   unit?: string;
   /** Optional target/goal value */
-  target?: number | null;
+  target?: number | null | undefined;
   /** Optional delta/change value */
   delta?: number | null;
   /** Preferred alignment direction */
@@ -165,7 +165,7 @@ export function ChartTooltip({
       {/* Target and delta row */}
       {(target !== null || deltaInfo) && (
         <div className="flex items-center gap-2 mt-1 pt-1 border-t border-border/50">
-          {target !== null && (
+          {target !== null && target !== undefined && (
             <span className="text-xs text-muted-foreground">
               Target: {formatValue(target, unit)}
             </span>

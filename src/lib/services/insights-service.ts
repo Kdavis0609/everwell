@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { DerivedFeatures, AIInsight, AIInsightResponse, InsightsData } from '@/lib/types';
-import { logError } from '@/lib/logError';
+import { logError } from '@/lib/errors';
 
 export class InsightsService {
   static async calculateDerivedFeatures(sb: SupabaseClient, targetDate: string = new Date().toISOString().split('T')[0]): Promise<void> {

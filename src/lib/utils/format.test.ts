@@ -26,6 +26,10 @@ describe('format utilities', () => {
     it('formats small weights with 1 decimal place', () => {
       expect(formatValue(25.3, 'g')).toBe('25.3 g');
     });
+
+    it('handles undefined values', () => {
+      expect(formatValue(undefined, 'lbs')).toBe('No data');
+    });
   });
 
   describe('formatTooltipDate', () => {
@@ -56,6 +60,10 @@ describe('format utilities', () => {
 
     it('returns null for null target', () => {
       expect(formatDelta(175.5, null, 'lbs')).toBe(null);
+    });
+
+    it('returns null for undefined target', () => {
+      expect(formatDelta(175.5, undefined, 'lbs')).toBe(null);
     });
   });
 });

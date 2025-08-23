@@ -7,7 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { InsightsPayload, InsightsResult } from './types';
 import { hashPayload, isCacheValid, getTodayDate, USAGE_LIMITS, isUsageLimitExceeded } from './utils';
-import { logError } from '@/lib/logError';
+import { logError } from '@/lib/errors';
 
 export interface UsageInfo {
   todayCount: number;

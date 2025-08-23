@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { MetricsService } from '@/lib/services/metrics-service';
-import { logError } from '@/lib/logError';
+import { logError } from '@/lib/errors';
 import { createSupabaseBrowser } from '@/lib/supabase/client';
 
 export function useMetricsSetup() {

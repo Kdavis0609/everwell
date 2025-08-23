@@ -2,7 +2,11 @@
  * Format value with unit for tooltip display
  * Handles different unit types with appropriate precision
  */
-export function formatValue(value: number | string, unit?: string): string {
+export function formatValue(value: number | string | undefined, unit?: string): string {
+  if (value === undefined) {
+    return 'No data';
+  }
+
   if (typeof value === 'string') {
     return unit ? `${value} ${unit}` : value;
   }
@@ -55,7 +59,7 @@ export function formatTooltipDate(date: Date | string): string {
  * Calculate and format delta (change) between two values
  * Returns formatted string with sign and color indication
  */
-export function formatDelta(current: number, target: number | null, unit?: string): {
+export function formatDelta(current: number, target: number | null | undefined, unit?: string): {
   value: string;
   isPositive: boolean;
   isNegative: boolean;

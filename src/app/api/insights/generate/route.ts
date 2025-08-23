@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServer } from '@/lib/supabase/server';
-import { logError } from '@/lib/logError';
+import { logError } from '@/lib/errors';
 import { InsightsData } from '@/lib/types';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;

@@ -110,7 +110,7 @@ export function TrendChart({
     grid: `hsl(${getComputedColor('--muted')})`
   };
 
-  const handlePointHover = (event: React.MouseEvent, point: any) => {
+  const handlePointHover = (event: React.MouseEvent | React.FocusEvent, point: any) => {
     const element = event.currentTarget as HTMLElement;
     showTooltip({
       title: metric,

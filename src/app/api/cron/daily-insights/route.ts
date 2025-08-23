@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServer } from '@/lib/supabase/server';
 import { InsightsService } from '@/lib/services/insights-service';
-import { logError } from '@/lib/logError';
+import { logError } from '@/lib/errors';
 
 const CRON_SECRET = process.env.CRON_SECRET;
 

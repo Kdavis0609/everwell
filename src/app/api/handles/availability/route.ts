@@ -5,7 +5,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const handle = searchParams.get('handle') ?? '';
   
-  const supabase = createSupabaseServer();
+  const supabase = await createSupabaseServer();
   const { data, error } = await supabase.rpc('is_handle_available', { candidate: handle });
   
   if (error) {

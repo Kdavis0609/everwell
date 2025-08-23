@@ -148,7 +148,9 @@ export default function ProfilePage() {
         }
 
         console.log('Profile created/updated successfully:', newProfile);
-        profileData = newProfile;
+        if (newProfile) {
+          profileData = newProfile;
+        }
       }
 
       // Ensure we have profile data

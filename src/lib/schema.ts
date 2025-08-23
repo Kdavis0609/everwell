@@ -1,5 +1,5 @@
 import { createSupabaseBrowser } from '@/lib/supabase/client';
-import { logError } from '@/lib/logError';
+import { logError } from '@/lib/errors';
 
 export type SchemaMap = {
   profiles: {
