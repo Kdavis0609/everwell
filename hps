@@ -1,0 +1,5 @@
+[33m5bb1f68[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m fix(charts): add missing React keys to trend chart components
+[33m3e398e5[m cleanup(profile): remove debugging code from profile service
+[33m7e5cea1[m fix(profile): use correct column names (id instead of user_id) for profiles table
+[33m3f455c6[m fix(dashboard): resolve React key error for metrics with undefined slugs
+[33m2718fc9[m chore(build): make build deterministic for Cursor & Vercel (sentinel + clean caches)

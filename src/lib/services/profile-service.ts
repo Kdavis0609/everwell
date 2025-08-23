@@ -18,7 +18,7 @@ export async function getProfile(sb: SupabaseClient) {
     
     const { data, error } = await sb
       .from('profiles')
-      .select('id, email, full_name, avatar_url, created_at, updated_at')
+      .select('id, email, full_name, avatar_url, handle, created_at, updated_at')
       .eq('id', uid)
       .maybeSingle();
 
@@ -37,6 +37,7 @@ export async function getProfile(sb: SupabaseClient) {
         email: data.email,
         full_name: data.full_name,
         avatar_url: data.avatar_url,
+        handle: data.handle,
         created_at: data.created_at,
         updated_at: data.updated_at
       };
@@ -49,7 +50,7 @@ export async function getProfile(sb: SupabaseClient) {
       // Try to fetch the profile again
       const { data: newData, error: newError } = await sb
         .from('profiles')
-        .select('id, email, full_name, avatar_url, created_at, updated_at')
+        .select('id, email, full_name, avatar_url, handle, created_at, updated_at')
         .eq('id', uid)
         .maybeSingle();
         
@@ -64,6 +65,7 @@ export async function getProfile(sb: SupabaseClient) {
           email: newData.email,
           full_name: newData.full_name,
           avatar_url: newData.avatar_url,
+          handle: newData.handle,
           created_at: newData.created_at,
           updated_at: newData.updated_at
         };
