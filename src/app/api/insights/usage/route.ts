@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Usage API error:', error);
+    console.warn('Usage API error:', error);
     return NextResponse.json(
       { ok: false, reason: 'server_error', message: 'Internal server error' },
       { status: 500 }

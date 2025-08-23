@@ -6,7 +6,7 @@ import { InsightsData } from '@/lib/types';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 if (!OPENAI_API_KEY) {
-  console.error('OPENAI_API_KEY is not set');
+      console.warn('OPENAI_API_KEY is not set');
 }
 
 export async function POST(request: NextRequest) {
@@ -222,7 +222,7 @@ ${promptData.last_3_days}
       risk_flags: insight.risk_flags || []
     };
   } catch (parseError) {
-    console.error('Error parsing OpenAI response:', parseError);
+            console.warn('Error parsing OpenAI response:', parseError);
     throw new Error('Failed to parse AI response');
   }
 }

@@ -53,7 +53,7 @@ export default function InsightsPage() {
         const data = await InsightsService.getInsightsData(supabase);
         setInsightsData(data);
       } catch (error) {
-        console.error('Error loading insights:', error);
+        console.warn('Error loading insights:', error);
         toast.error('Failed to load insights');
       } finally {
         setLoading(false);
@@ -77,7 +77,7 @@ export default function InsightsPage() {
       
       toast.success('Insights regenerated successfully!');
     } catch (error) {
-      console.error('Error regenerating insights:', error);
+      console.warn('Error regenerating insights:', error);
       toast.error('Failed to regenerate insights');
     } finally {
       setGenerating(false);

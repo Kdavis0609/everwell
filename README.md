@@ -81,6 +81,43 @@ For regular development (without killing existing processes):
 npm run dev
 ```
 
+## Dev Reset
+
+To kill any processes on ports 3000/3001 and start a fresh dev server:
+
+**PowerShell:**
+```bash
+npm run dev:reset:ps
+```
+
+**Git Bash:**
+```bash
+npm run dev:reset:bash
+```
+
+## Database Migrations
+
+Push database migrations to your Supabase project:
+
+**PowerShell:**
+```bash
+npm run db:push:ps
+```
+
+**Git Bash:**
+```bash
+npm run db:push:bash
+```
+
+**First time setup:**
+```bash
+# Login to Supabase (paste your Access Token from Dashboard → Settings → Access Tokens)
+npx supabase login
+
+# Link to your project (if not already linked)
+npx supabase link --project-ref <your-project-ref>
+```
+
 ## Project Structure
 
 ```

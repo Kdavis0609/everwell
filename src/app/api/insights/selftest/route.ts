@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     let processedData: Record<string, any> = {};
 
     if (measurementsError) {
-      console.error('Error fetching measurements for selftest:', measurementsError);
+              console.warn('Error fetching measurements for selftest:', measurementsError);
       return NextResponse.json(
         { ok: false, reason: 'fetch_error', message: 'Failed to fetch measurements' },
         { status: 500 }
@@ -209,7 +209,7 @@ Please analyze this data and provide insights as requested. Return only valid JS
     });
 
   } catch (error) {
-    console.error('Selftest error:', error);
+    console.warn('Selftest error:', error);
     
     let reason = 'unknown_error';
     let message = 'Unknown error occurred';
