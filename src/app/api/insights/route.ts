@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     try {
       await ensureProfile(supabase);
     } catch (profileError) {
-      console.error('Profile creation failed:', profileError);
+      console.warn('Profile creation failed:', profileError);
       return NextResponse.json(
         { ok: false, reason: 'profile_error', message: 'Failed to create user profile' },
         { status: 500 }
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
         .order('measured_at', { ascending: true });
 
       if (measurementsError) {
-        console.error('Error fetching measurements:', measurementsError);
+        console.warn('Error fetching measurements:', measurementsError);
         return NextResponse.json(
           { ok: false, reason: 'fetch_error', message: 'Failed to fetch measurements' },
           { status: 500 }
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       
       measurements = measurementsData || [];
     } catch (measurementsError) {
-      console.error('Exception fetching measurements:', measurementsError);
+      console.warn('Exception fetching measurements:', measurementsError);
       return NextResponse.json(
         { ok: false, reason: 'fetch_error', message: 'Failed to fetch measurements' },
         { status: 500 }
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     try {
       processedData = processMeasurementsForAI(measurements || []);
     } catch (processError) {
-      console.error('Error processing measurements for AI:', processError);
+      console.warn('Error processing measurements for AI:', processError);
       return NextResponse.json(
         { ok: false, reason: 'process_error', message: 'Failed to process measurement data' },
         { status: 500 }
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
       try {
         provider = getInsightsProvider();
       } catch (providerError) {
-        console.error('Failed to initialize AI provider:', providerError);
+        console.warn('Failed to initialize AI provider:', providerError);
         return NextResponse.json(
           { 
             ok: false, 

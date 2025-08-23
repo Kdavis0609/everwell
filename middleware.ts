@@ -63,7 +63,7 @@ export async function middleware(req: NextRequest) {
     const { data: { session }, error } = await supabase.auth.getSession();
     
     if (error) {
-      console.error('[middleware.auth] Session error:', error);
+      console.warn('[middleware.auth] Session error:', error);
     }
 
     // Handle login page with existing session
@@ -106,7 +106,7 @@ export async function middleware(req: NextRequest) {
     return res;
 
   } catch (error) {
-    console.error('[middleware.auth] Unexpected error:', error);
+    console.warn('[middleware.auth] Unexpected error:', error);
     
     // On error, allow the request to proceed (fail open for safety)
     return res;

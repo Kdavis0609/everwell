@@ -18,7 +18,7 @@ export async function getProfile(sb: SupabaseClient) {
     
     const { data, error } = await sb
       .from('profiles')
-      .select('id, full_name')
+      .select('id, full_name, created_at, updated_at')
       .eq('id', uid)
       .maybeSingle();
 
@@ -49,7 +49,7 @@ export async function getProfile(sb: SupabaseClient) {
       // Try to fetch the profile again
       const { data: newData, error: newError } = await sb
         .from('profiles')
-        .select('id, full_name')
+        .select('id, full_name, created_at, updated_at')
         .eq('id', uid)
         .maybeSingle();
         
