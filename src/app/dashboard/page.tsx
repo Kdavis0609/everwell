@@ -737,7 +737,7 @@ export default function DashboardPage() {
                         <form onSubmit={(e) => { e.preventDefault(); saveMetrics(); }} className="space-y-6">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {enabledMetrics.map((metric) => {
-                              const metricKey = metric.slug || metric.id || `metric-${metric.metric_id || 'unknown'}`;
+                                                             const metricKey = metric.slug || metric.id || `metric-${metric.id || 'unknown'}`;
                               return (
                                 <div key={metricKey} className={metric.input_kind === 'text' ? 'md:col-span-2' : ''}>
                                   <MetricInput
