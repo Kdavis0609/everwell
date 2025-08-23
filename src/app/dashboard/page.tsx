@@ -76,6 +76,14 @@ export default function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
     
+    // Add a timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        console.warn('Dashboard load timeout - forcing completion');
+        setLoading(false);
+      }
+    }, 10000); // 10 second timeout
+    
     const load = async () => {
       setLoading(true);
       setErr(null);
@@ -94,9 +102,19 @@ export default function DashboardPage() {
       setUserId(uid);
 
       // Load user profile
-      const profile = await getProfile(supabase);
-      if (!cancelled && profile) {
-        setProfile(profile);
+      try {
+        const profile = await getProfile(supabase);
+        if (!cancelled && profile) {
+          setProfile(profile);
+        } else if (!cancelled) {
+          console.warn('No profile returned, continuing without profile');
+        }
+      } catch (profileError) {
+        console.error('Profile loading error:', profileError);
+        // Don't fail the entire dashboard load for profile errors
+        if (!cancelled) {
+          console.warn('Profile loading failed, continuing without profile');
+        }
       }
 
       // Load enabled metrics and recent measurements
@@ -107,6 +125,7 @@ export default function DashboardPage() {
         await loadWeeklyData(supabase);
         await calculateHeroStats(supabase);
       } catch (error) {
+        console.error('Dashboard data loading error:', error);
         logError('[dashboard.load]', error);
         if (!cancelled) {
           setErr('Failed to load dashboard data. Please try refreshing the page.');
@@ -122,6 +141,7 @@ export default function DashboardPage() {
     
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
   }, []);
 
@@ -333,7 +353,16 @@ export default function DashboardPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate weekly plan');
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          throw new Error('Authentication required. Please log in again.');
+        } else if (errorData.reason === 'not_enough_data') {
+          throw new Error('Add a few more days of entries to generate a weekly plan. We need at least 5 days of data.');
+        } else if (errorData.reason === 'no_openai_key') {
+          throw new Error('OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.');
+        } else {
+          throw new Error(errorData.message || 'Failed to generate weekly plan');
+        }
       }
 
       const plan = await response.json();
@@ -382,7 +411,9 @@ export default function DashboardPage() {
       const result = await response.json();
 
       if (!result.ok) {
-        if (result.reason === 'not_enough_data') {
+        if (result.reason === 'not_authenticated') {
+          setInsightsError('Authentication required. Please log in again.');
+        } else if (result.reason === 'not_enough_data') {
           setInsightsError('Add a few more days of entries to generate insights. We need at least 5 days of data.');
         } else if (result.reason === 'no_openai_key') {
           setInsightsError('OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables.');
@@ -613,6 +644,33 @@ export default function DashboardPage() {
       }
     });
   };
+
+  // Show loading state while checking authentication
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="px-6 py-6">
+          <div className="flex items-center justify-center py-12">
+            <LoadingSpinner className="mr-2" />
+            <span>Loading...</span>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  // Show error if not authenticated
+  if (!userId) {
+    return (
+      <AppShell>
+        <div className="px-6 py-6">
+          <div className="p-4 rounded-2xl bg-red-50 border border-red-200">
+            <p className="text-red-600 text-sm">Please log in to access the dashboard.</p>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>

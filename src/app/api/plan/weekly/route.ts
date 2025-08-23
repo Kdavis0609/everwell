@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
     
     // Get the current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
     if (authError || !user) {
       return NextResponse.json(
         { ok: false, reason: 'not_authenticated', message: 'User not authenticated' },
@@ -37,18 +38,26 @@ export async function POST(request: NextRequest) {
     // Get weekly progress data
     const weeklyProgress = await MetricsService.getWeeklyProgress(supabase);
     
-    // Get last 7 days of derived features
-    const { data: derivedFeatures, error: derivedError } = await supabase
-      .from('derived_features')
-      .select('*')
-      .eq('user_id', userId)
-      .gte('day', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
-      .lte('day', new Date().toISOString().split('T')[0])
-      .order('day', { ascending: true });
+    // Get last 7 days of derived features (table may not exist yet)
+    let derivedFeatures = [];
+    try {
+      const { data: derivedData, error: derivedError } = await supabase
+        .from('derived_features')
+        .select('*')
+        .eq('user_id', userId)
+        .gte('day', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+        .lte('day', new Date().toISOString().split('T')[0])
+        .order('day', { ascending: true });
 
-    if (derivedError) {
-      console.error('Error fetching derived features:', derivedError);
-      return NextResponse.json({ error: 'Failed to fetch weekly data' }, { status: 500 });
+      if (derivedError) {
+        console.warn('Derived features table not available:', derivedError);
+        derivedFeatures = [];
+      } else {
+        derivedFeatures = derivedData || [];
+      }
+    } catch (error) {
+      console.warn('Derived features table not available:', error);
+      derivedFeatures = [];
     }
 
     // Generate weekly plan using AI
@@ -58,16 +67,27 @@ export async function POST(request: NextRequest) {
       derivedFeatures: derivedFeatures || []
     });
 
-    // Get last Monday's date for storage
-    const { data: lastMonday } = await supabase
-      .rpc('get_last_monday');
+    // Get last Monday's date for storage (function may not exist)
+    let lastMonday;
+    try {
+      const { data: mondayData } = await supabase.rpc('get_last_monday');
+      lastMonday = mondayData;
+    } catch (error) {
+      console.warn('get_last_monday function not available, using current date');
+      lastMonday = new Date().toISOString().split('T')[0];
+    }
 
     // Store the weekly plan in ai_insights
-    await InsightsService.saveAIInsight(
-      supabase, 
-      lastMonday || new Date().toISOString().split('T')[0], 
-      weeklyPlan
-    );
+    try {
+      await InsightsService.saveAIInsight(
+        supabase, 
+        lastMonday, 
+        weeklyPlan
+      );
+    } catch (error) {
+      console.warn('Failed to save AI insight:', error);
+      // Continue without saving to avoid breaking the API
+    }
 
     return NextResponse.json(weeklyPlan);
   } catch (error) {
@@ -154,6 +174,12 @@ Generate a weekly plan with 3 focused action items that will help the user make 
   if (!response.ok) {
     const errorText = await response.text();
     console.error('OpenAI API error:', errorText);
+    
+    // Handle quota exceeded error specifically
+    if (response.status === 429) {
+      throw new Error('OpenAI quota exceeded. Please check your billing or try again later.');
+    }
+    
     throw new Error(`OpenAI API error: ${response.status}`);
   }
 

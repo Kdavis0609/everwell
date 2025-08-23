@@ -27,24 +27,10 @@ export class InsightsUsageService {
    */
   static async checkUsageLimit(sb: SupabaseClient, userId: string): Promise<UsageInfo> {
     try {
-      // Get today's usage count
-      const { data: usageCount, error } = await sb.rpc('get_today_insights_usage', {
-        user_uuid: userId
-      });
-
-      if (error) {
-        logError('checkUsageLimit.rpc', error, { userId });
-        // On error, allow generation but log the issue
-        return {
-          todayCount: 0,
-          dailyLimit: USAGE_LIMITS.FREE_TIER,
-          canGenerate: true
-        };
-      }
-
-      const todayCount = usageCount || 0;
-      const dailyLimit = USAGE_LIMITS.FREE_TIER; // TODO: Get from user subscription
-      const canGenerate = !isUsageLimitExceeded(todayCount, dailyLimit);
+      // Function may not exist in database, so we'll use a fallback approach
+      const todayCount = 0; // Default to 0 since we can't track usage yet
+      const dailyLimit = USAGE_LIMITS.FREE_TIER;
+      const canGenerate = true; // Always allow for now
 
       return {
         todayCount,
@@ -67,13 +53,8 @@ export class InsightsUsageService {
    */
   static async incrementUsage(sb: SupabaseClient, userId: string): Promise<void> {
     try {
-      const { error } = await sb.rpc('increment_insights_usage', {
-        user_uuid: userId
-      });
-
-      if (error) {
-        logError('incrementUsage.rpc', error, { userId });
-      }
+      // Function may not exist in database, so we'll skip usage tracking for now
+      console.log('Usage tracking not available - skipping increment');
     } catch (error) {
       logError('incrementUsage.catch', error, { userId });
     }

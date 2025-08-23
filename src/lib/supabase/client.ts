@@ -22,8 +22,8 @@ export function createSupabaseBrowser() {
     {
       auth: {
         persistSession: true,
-        autoRefreshToken: true,
-        storageKey: 'everwell-auth'
+        autoRefreshToken: true
+        // Removed custom storageKey to use default Supabase cookies
       }
     }
   );

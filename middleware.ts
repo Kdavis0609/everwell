@@ -103,15 +103,9 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // Protect API routes (except auth endpoints)
-    if (pathname.startsWith('/api/') && !pathname.startsWith('/api/auth/') && !session) {
-      console.log('[middleware.auth] Unauthenticated user accessing protected API:', pathname);
-      
-      // Return 401 for API routes instead of redirecting
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    // Let API routes handle their own authentication
+    if (pathname.startsWith('/api/')) {
+      return res;
     }
 
     // Allow all other requests to proceed
