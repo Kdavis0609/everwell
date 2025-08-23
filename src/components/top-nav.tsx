@@ -49,7 +49,7 @@ export function TopNav() {
 
       setProfile({
         user_id: user.id,
-        email: user.email,
+        email: user.email || null,
         full_name: null,
         avatar_url: profileData.avatar_url,
         created_at: null,
