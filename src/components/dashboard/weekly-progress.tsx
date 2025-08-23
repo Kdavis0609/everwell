@@ -8,6 +8,18 @@ import { WeeklyProgress } from '@/lib/types';
 import { Sparkline } from '@/components/charts/sparkline';
 import { useState } from 'react';
 
+// Helper function to determine unit based on metric name
+function getMetricUnit(metricName: string): string {
+  const name = metricName.toLowerCase();
+  if (name.includes('weight')) return 'lbs';
+  if (name.includes('sleep')) return 'hrs';
+  if (name.includes('water')) return 'oz';
+  if (name.includes('steps')) return '';
+  if (name.includes('waist')) return 'in';
+  if (name.includes('bmi')) return '';
+  return '';
+}
+
 interface WeeklyProgressCardProps {
   weeklyProgress: WeeklyProgress[];
   loading?: boolean;
@@ -159,6 +171,7 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
             const progressPercent = progress.progress_percent;
             const sparklineData = getSparklineData(progress);
             const annotations = getAnnotations(progress);
+            const unit = getMetricUnit(progress.metric_name);
 
             return (
               <div key={index} className="space-y-3">
@@ -178,7 +191,7 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
                     showTooltip={true}
                     annotations={annotations}
                     title={displayName}
-                    unit={progress.unit || ''}
+                    unit={unit}
                     target={targetValue}
                     color={progressPercent && progressPercent > 80 
                       ? (typeof window !== 'undefined' 
