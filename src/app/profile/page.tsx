@@ -39,6 +39,22 @@ export default function ProfilePage() {
     formData.full_name.trim() !== (profile.full_name || '').trim()
   );
 
+  // More detailed change detection debugging
+  if (profile && authUser) {
+    console.log('Change detection details:', {
+      formDataFullName: `"${formData.full_name}"`,
+      profileFullName: `"${profile.full_name || ''}"`,
+      formDataTrimmed: `"${formData.full_name.trim()}"`,
+      profileTrimmed: `"${(profile.full_name || '').trim()}"`,
+      hasChanges: hasChanges,
+      hasChangesAlt: hasChangesAlt,
+      formDataLength: formData.full_name.length,
+      profileLength: (profile.full_name || '').length,
+      areEqual: formData.full_name === (profile.full_name || ''),
+      areEqualTrimmed: formData.full_name.trim() === (profile.full_name || '').trim()
+    });
+  }
+
   // Debug change detection
   if (profile && authUser) {
     console.log('Change detection debug:', {
@@ -114,68 +130,75 @@ export default function ProfilePage() {
       console.log('Auth user loaded:', user);
       setAuthUser(user);
 
-      // Try to get existing profile with error handling
+      // Simple approach: try to get profile, if it fails, create one
       console.log('Fetching profile for user ID:', user.id);
-      let { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, avatar_url, handle, created_at, updated_at')
-        .eq('id', user.id)
-        .maybeSingle();
+      
+      let profileData = null;
+      let profileError = null;
 
-      console.log('Profile fetch result:', { profileData, profileError });
-
-      // If there's an error or no profile data, try to create one
-      if (profileError || !profileData) {
-        console.log('Profile not found or error occurred, attempting to create...');
-        
-        const { data: newProfile, error: createError } = await supabase
+      // First, try to get the profile with all possible columns
+      try {
+        const { data, error } = await supabase
           .from('profiles')
-          .upsert({
-            id: user.id,
-            email: user.email,
-            full_name: null,
-            avatar_url: null
-          }, {
-            onConflict: 'id'
-          })
-          .select('id, email, full_name, avatar_url, handle, created_at, updated_at')
+          .select('*')
+          .eq('id', user.id)
           .single();
+        
+        if (data) {
+          profileData = data;
+          console.log('Profile found:', profileData);
+        } else {
+          profileError = error;
+          console.log('Profile not found, error:', error);
+        }
+      } catch (error) {
+        console.log('Profile fetch failed:', error);
+        profileError = error;
+      }
 
-        if (createError) {
-          console.error('Failed to create/upsert profile:', createError);
+      // If no profile exists, create one
+      if (!profileData) {
+        console.log('Creating new profile...');
+        try {
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              id: user.id,
+              email: user.email
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('Failed to create profile:', createError);
+            toast.error('Failed to create profile');
+            return;
+          }
+
+          profileData = newProfile;
+          console.log('Profile created successfully:', profileData);
+        } catch (createError) {
+          console.error('Profile creation failed:', createError);
           toast.error('Failed to create profile');
           return;
         }
-
-        console.log('Profile created/updated successfully:', newProfile);
-        if (newProfile) {
-          profileData = newProfile;
-        }
       }
 
-      // Ensure we have profile data
-      if (!profileData) {
-        console.error('Still no profile data after creation attempt');
-        toast.error('Failed to load or create profile');
-        return;
-      }
-
-      console.log('Final profile data:', profileData);
-
+      // Create the profile object
       const profile: Profile = {
         user_id: profileData.id,
-        email: user.email || profileData.email, // Use auth email first
-        full_name: profileData.full_name,
-        avatar_url: profileData.avatar_url,
-        handle: profileData.handle,
-        created_at: profileData.created_at,
-        updated_at: profileData.updated_at
+        email: user.email || profileData.email,
+        full_name: profileData.full_name || null,
+        avatar_url: profileData.avatar_url || null,
+        handle: profileData.handle || null,
+        created_at: profileData.created_at || null,
+        updated_at: profileData.updated_at || null
       };
 
       console.log('Setting profile state:', profile);
       setProfile(profile);
       
-      // Set form data immediately
+      // Set form data
       setFormData({
         full_name: profile.full_name || ''
       });
@@ -258,14 +281,24 @@ export default function ProfilePage() {
 
     try {
       const supabase = createSupabaseBrowser();
+      
+      // First, let's test if the RPC function exists
+      console.log('Testing RPC function availability...');
       const { data, error } = await supabase.rpc('is_handle_available', {
         candidate: handle
       });
 
       if (error) {
-        console.error('Handle availability check error:', error);
+        console.error('Handle availability check error:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        });
         // If the RPC doesn't exist yet (before migration), assume available
         if (error.message?.includes('function') || error.message?.includes('does not exist')) {
+          console.log('RPC function does not exist - migration may not be complete');
           setHandleAvailable(true);
         } else {
           setHandleAvailable(false);
@@ -273,6 +306,7 @@ export default function ProfilePage() {
         return;
       }
 
+      console.log('RPC function exists and returned:', data);
       setHandleAvailable(data);
     } catch (error) {
       console.error('Handle availability check failed:', error);
@@ -308,23 +342,38 @@ export default function ProfilePage() {
 
     try {
       const supabase = createSupabaseBrowser();
+      
+      // First, let's check if the RPC function exists
+      console.log('Attempting to update handle:', handleData.handle);
+      
       const { data, error } = await supabase.rpc('update_my_handle', {
         new_handle: handleData.handle
       });
 
       if (error) {
-        console.error('Handle update error:', error);
+        console.error('Handle update error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: JSON.stringify(error, null, 2)
+        });
+        
         if (error.message?.includes('invalid_handle')) {
           toast.error('Invalid handle format. Use only letters, numbers, hyphens, and underscores.');
         } else if (error.message?.includes('not_authenticated')) {
           toast.error('Please log in to update your handle');
         } else if (error.message?.includes('function') || error.message?.includes('does not exist')) {
           toast.error('Handle system not yet available. Please run the database migration first.');
+        } else if (error.message?.includes('duplicate key') || error.message?.includes('already exists')) {
+          toast.error('This handle is already taken. Please try a different one.');
         } else {
-          toast.error('Failed to update handle');
+          toast.error(`Failed to update handle: ${error.message || 'Unknown error'}`);
         }
         return;
       }
+
+      console.log('Handle update response:', data);
 
       if (data && data.length > 0) {
         const updatedHandle = data[0].handle;
@@ -340,10 +389,13 @@ export default function ProfilePage() {
 
         toast.success('Handle updated successfully!');
         setHandleAvailable(true);
+      } else {
+        console.error('No data returned from handle update');
+        toast.error('Handle update failed: No data returned');
       }
     } catch (error) {
-      console.error('Handle update failed:', error);
-      toast.error('Failed to update handle');
+      console.error('Handle update failed with exception:', error);
+      toast.error(`Failed to update handle: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setHandleLoading(false);
     }
@@ -528,15 +580,72 @@ export default function ProfilePage() {
                      <p>Has Changes: {hasChanges ? 'true' : 'false'}</p>
                      <p>Has Changes Alt: {hasChangesAlt ? 'true' : 'false'}</p>
                      <p>Auth User: {authUser ? 'loaded' : 'null'}</p>
-                     <button 
-                       onClick={() => {
-                         console.log('Test button clicked');
-                         setFormData({ full_name: 'Test Change' });
-                       }}
-                       className="mt-2 px-2 py-1 bg-blue-500 text-white rounded text-xs"
-                     >
-                       Test Change
-                     </button>
+                     <p>Handle: "{profile?.handle || 'null'}"</p>
+                     {!profile?.handle && (
+                       <p className="text-yellow-600 mt-2">
+                         <strong>Note:</strong> Handle feature requires database migration. 
+                         Run the SQL in handles_migration.sql in your Supabase dashboard.
+                       </p>
+                     )}
+                                           <button 
+                        onClick={() => {
+                          console.log('Test button clicked');
+                          setFormData({ full_name: 'Test Change' });
+                        }}
+                        className="mt-2 px-2 py-1 bg-blue-500 text-white rounded text-xs mr-2"
+                      >
+                        Test Change
+                      </button>
+                                             <button 
+                         onClick={async () => {
+                           console.log('Testing database functions...');
+                           const supabase = createSupabaseBrowser();
+                           
+                           // Test basic profile access
+                           try {
+                             const { data: basicTest, error: basicError } = await supabase
+                               .from('profiles')
+                               .select('id')
+                               .limit(1);
+                             console.log('Basic profile test:', { data: basicTest, error: basicError });
+                           } catch (e) {
+                             console.log('Basic profile test failed:', e);
+                           }
+                           
+                           // Test if handle column exists
+                           try {
+                             const { data: profileTest, error: profileError } = await supabase
+                               .from('profiles')
+                               .select('handle')
+                               .limit(1);
+                             console.log('Handle column test:', { data: profileTest, error: profileError });
+                           } catch (e) {
+                             console.log('Handle column test failed:', e);
+                           }
+                           
+                           // Test other columns
+                           try {
+                             const { data: fullTest, error: fullError } = await supabase
+                               .from('profiles')
+                               .select('id, email, full_name, avatar_url, created_at, updated_at')
+                               .limit(1);
+                             console.log('Full profile test:', { data: fullTest, error: fullError });
+                           } catch (e) {
+                             console.log('Full profile test failed:', e);
+                           }
+                           
+                           // Test RPC functions
+                           try {
+                             const { data: rpcTest, error: rpcError } = await supabase.rpc('is_handle_available', { candidate: 'test' });
+                             console.log('RPC function test:', { data: rpcTest, error: rpcError });
+                           } catch (e) {
+                             console.log('RPC function test failed:', e);
+                           }
+                         }}
+                         className="mt-2 px-2 py-1 bg-green-500 text-white rounded text-xs"
+                       >
+                         Test DB Functions
+                       </button>
                    </div>
                 </div>
               </CardContent>
@@ -555,7 +664,7 @@ export default function ProfilePage() {
                    <div>
                      <Label className="text-sm font-medium text-muted-foreground">User ID</Label>
                      <p className="text-sm font-mono bg-muted px-2 py-1 rounded mt-1">
-                       {authUser?.id || profile?.user_id || 'Loading...'}
+                       {profile?.handle ? `@${profile.handle}` : (authUser?.id || 'Loading...')}
                      </p>
                    </div>
                    <div>

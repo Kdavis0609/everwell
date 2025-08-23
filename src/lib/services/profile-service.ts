@@ -16,11 +16,29 @@ export async function getProfile(sb: SupabaseClient) {
     const uid = session.user.id;
                     // Attempting to fetch profile for user
     
-    const { data, error } = await sb
+    // First try to get profile with handle column
+    let { data, error } = await sb
       .from('profiles')
       .select('id, email, full_name, avatar_url, handle, created_at, updated_at')
       .eq('id', uid)
       .maybeSingle();
+
+    // If that fails due to missing handle column, try without it
+    if (error && error.message?.includes('column') && error.message?.includes('handle')) {
+      console.log('Handle column not found, trying without handle...');
+      const { data: dataWithoutHandle, error: errorWithoutHandle } = await sb
+        .from('profiles')
+        .select('id, email, full_name, avatar_url, created_at, updated_at')
+        .eq('id', uid)
+        .maybeSingle();
+      
+      if (dataWithoutHandle) {
+        data = { ...dataWithoutHandle, handle: null };
+        error = null;
+      } else {
+        error = errorWithoutHandle;
+      }
+    }
 
     if (error) { 
                       console.warn('Profile query error:', error);
@@ -48,11 +66,28 @@ export async function getProfile(sb: SupabaseClient) {
     try {
       await ensureProfile(sb);
       // Try to fetch the profile again
-      const { data: newData, error: newError } = await sb
+      let { data: newData, error: newError } = await sb
         .from('profiles')
         .select('id, email, full_name, avatar_url, handle, created_at, updated_at')
         .eq('id', uid)
         .maybeSingle();
+
+      // If that fails due to missing handle column, try without it
+      if (newError && newError.message?.includes('column') && newError.message?.includes('handle')) {
+        console.log('Handle column not found in retry, trying without handle...');
+        const { data: newDataWithoutHandle, error: newErrorWithoutHandle } = await sb
+          .from('profiles')
+          .select('id, email, full_name, avatar_url, created_at, updated_at')
+          .eq('id', uid)
+          .maybeSingle();
+        
+        if (newDataWithoutHandle) {
+          newData = { ...newDataWithoutHandle, handle: null };
+          newError = null;
+        } else {
+          newError = newErrorWithoutHandle;
+        }
+      }
         
       if (newError) {
                           console.warn('Failed to fetch profile after creation:', newError);
