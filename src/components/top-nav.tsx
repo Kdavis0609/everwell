@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createSupabaseBrowser } from '@/lib/supabase/client';
@@ -16,9 +16,50 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ThemeToggle } from '@/components/theme-toggle';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import type { Profile } from '@/lib/types/profile';
 
 export function TopNav() {
   const router = useRouter();
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const loadProfile = async () => {
+    try {
+      const supabase = createSupabaseBrowser();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        return;
+      }
+
+      // Get profile from profiles table
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) {
+        console.warn('Profile fetch error:', profileError);
+        return;
+      }
+
+      setProfile({
+        user_id: user.id,
+        email: user.email,
+        full_name: null,
+        avatar_url: profileData.avatar_url,
+        created_at: null,
+        updated_at: null
+      });
+
+    } catch (error) {
+      console.warn('Profile load error:', error);
+    }
+  };
 
   const handleSignOut = async () => {
     const supabase = createSupabaseBrowser();
@@ -68,7 +109,7 @@ export function TopNav() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src="/api/avatar" alt="User avatar" />
+                    <AvatarImage src={profile?.avatar_url || undefined} alt="User avatar" />
                     <AvatarFallback className="bg-primary text-primary-foreground">
                       <User className="h-5 w-5" />
                     </AvatarFallback>

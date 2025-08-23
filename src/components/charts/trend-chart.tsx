@@ -4,8 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Calendar, TrendingUp } from 'lucide-react';
-import { Line, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Line, LineChart, CartesianGrid, XAxis, YAxis, Legend, ResponsiveContainer } from 'recharts';
 import { useMemo, useState } from 'react';
+import { ChartTooltip, useChartTooltip } from './ChartTooltip';
 
 interface DataPoint {
   date: string;
@@ -40,6 +41,7 @@ export function TrendChart({
   annotations = []
 }: TrendChartProps) {
   const [selectedRange, setSelectedRange] = useState(currentRange);
+  const { tooltipState, showTooltip, hideTooltip } = useChartTooltip();
 
   const rangeOptions = [
     { value: 7, label: '7d' },
@@ -106,6 +108,18 @@ export function TrendChart({
     muted: `hsl(${getComputedColor('--muted-foreground')})`,
     background: `hsl(${getComputedColor('--background')})`,
     grid: `hsl(${getComputedColor('--muted')})`
+  };
+
+  const handlePointHover = (event: React.MouseEvent, point: any) => {
+    const element = event.currentTarget as HTMLElement;
+    showTooltip({
+      title: metric,
+      date: point.date,
+      value: point.value,
+      unit,
+      color: chartColors.primary,
+      align: 'top'
+    }, element);
   };
 
   if (loading) {
@@ -277,35 +291,7 @@ export function TrendChart({
                 stroke={chartColors.muted}
                 label={{ value: unit, angle: -90, position: 'insideLeft', fontSize: 12 }}
               />
-              <Tooltip 
-                content={({ active, payload, label }) => {
-                  if (active && payload && payload.length) {
-                    return (
-                      <div className="bg-background border border-border rounded-lg p-3 shadow-lg">
-                        <p className="font-medium text-foreground">{formatDateForChart(label as string)}</p>
-                        {payload.map((entry: any, index: number) => {
-                          if (entry.name === 'Daily Value' && entry.value !== null && entry.value !== undefined && !isNaN(entry.value)) {
-                            return (
-                              <p key={`daily-${index}-${entry.value}-${entry.dataKey}`} className="text-primary">
-                                Daily Value: {entry.value} {unit}
-                              </p>
-                            );
-                          }
-                          if (entry.name === '7-Day Average' && entry.value !== null && entry.value !== undefined && !isNaN(entry.value)) {
-                            return (
-                              <p key={`avg-${index}-${entry.value}-${entry.dataKey}`} className="text-secondary">
-                                7-Day Average: {entry.value} {unit}
-                              </p>
-                            );
-                          }
-                          return null;
-                        })}
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
+
               <Legend />
               
               {/* Daily Value Line */}
@@ -326,6 +312,14 @@ export function TrendChart({
                         stroke={chartColors.primary}
                         strokeWidth={2}
                         fill={chartColors.background}
+                        onMouseEnter={(e) => handlePointHover(e, payload)}
+                        onMouseLeave={hideTooltip}
+                        onFocus={(e) => handlePointHover(e, payload)}
+                        onBlur={hideTooltip}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`${metric} on ${payload.date}: ${payload.value} ${unit}`}
+                        style={{ cursor: 'pointer' }}
                       />
                     );
                   }
@@ -350,6 +344,14 @@ export function TrendChart({
           </ResponsiveContainer>
         </div>
       </CardContent>
+      
+      {/* Professional tooltip */}
+      <ChartTooltip
+        {...tooltipState.data}
+        isVisible={tooltipState.isVisible}
+        referenceElement={tooltipState.referenceElement}
+        onHide={hideTooltip}
+      />
     </Card>
   );
 }

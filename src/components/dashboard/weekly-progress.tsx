@@ -177,6 +177,9 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
                     width={80}
                     showTooltip={true}
                     annotations={annotations}
+                    title={displayName}
+                    unit={progress.unit || ''}
+                    target={targetValue}
                     color={progressPercent && progressPercent > 80 
                       ? (typeof window !== 'undefined' 
                           ? `hsl(${getComputedStyle(document.documentElement).getPropertyValue('--chart-2').trim()})`

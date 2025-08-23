@@ -1,6 +1,7 @@
 'use client';
 
-import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts';
+import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { ChartTooltip, useChartTooltip } from './ChartTooltip';
 
 interface SparklineProps {
   data: Array<{ date: string; value: number }>;
@@ -9,6 +10,9 @@ interface SparklineProps {
   width?: number;
   showTooltip?: boolean;
   annotations?: Array<{ date: string; type: 'target' | 'streak' | 'best' }>;
+  title?: string;
+  unit?: string;
+  target?: number | null;
 }
 
 export function Sparkline({ 
@@ -17,7 +21,10 @@ export function Sparkline({
   height = 40, 
   width = 100,
   showTooltip = false,
-  annotations = []
+  annotations = [],
+  title,
+  unit,
+  target
 }: SparklineProps) {
   // Use CSS variable for default color if none provided
   const defaultColor = typeof window !== 'undefined' 
@@ -25,6 +32,8 @@ export function Sparkline({
     : '#2563EB';
   
   const lineColor = color || defaultColor;
+  const { tooltipState, showTooltip: showTooltipHook, hideTooltip } = useChartTooltip();
+  
   if (!data || data.length === 0) {
     return (
       <div 
@@ -57,28 +66,29 @@ export function Sparkline({
     isAnnotated: annotations.some(ann => ann.date === point.date)
   }));
 
-  const tooltipContent = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      const annotation = annotations.find(ann => ann.date === data.date);
-      
-      return (
-        <div className="bg-background border border-border rounded-lg p-2 shadow-lg">
-          <p className="text-xs font-medium">{data.date}</p>
-          <p className="text-xs text-muted-foreground">
-            {data.value !== null ? data.value.toFixed(1) : 'No data'}
-          </p>
-          {annotation && (
-            <p className="text-xs text-primary font-medium">
-              {annotation.type === 'target' && '🎯 Target hit'}
-              {annotation.type === 'streak' && '🔥 Streak'}
-              {annotation.type === 'best' && '⭐ Best'}
-            </p>
-          )}
-        </div>
-      );
-    }
-    return null;
+  const handlePointHover = (event: React.MouseEvent, point: any) => {
+    if (!showTooltip) return;
+    
+    const element = event.currentTarget as HTMLElement;
+    
+    // Ensure the element is properly positioned and visible
+    const rect = element.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    
+    // Ensure the point has valid data
+    if (point.value === null || point.value === undefined || isNaN(point.value)) return;
+    
+    const annotation = annotations.find(ann => ann.date === point.date);
+    
+    showTooltipHook({
+      title,
+      date: point.date,
+      value: point.value,
+      unit,
+      target,
+      color: lineColor,
+      align: 'top'
+    }, element);
   };
 
   return (
@@ -94,6 +104,27 @@ export function Sparkline({
             activeDot={false}
             connectNulls={false}
           />
+          {/* Interactive points for tooltip */}
+          {showTooltip && normalizedData.map((point, index) => 
+            point.normalizedValue !== null ? (
+              <circle
+                key={`tooltip-${point.date}-${index}`}
+                cx={index * (width / (normalizedData.length - 1))}
+                cy={height - point.normalizedValue}
+                r={6}
+                fill="transparent"
+                stroke="transparent"
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) => handlePointHover(e, point)}
+                onMouseLeave={hideTooltip}
+                onFocus={(e) => handlePointHover(e, point)}
+                onBlur={hideTooltip}
+                role="button"
+                tabIndex={0}
+                aria-label={`${title || 'Data point'} on ${point.date}: ${point.value}`}
+              />
+            ) : null
+          )}
           {/* Annotation dots */}
           {normalizedData.map((point, index) => 
             point.isAnnotated && point.normalizedValue !== null ? (
@@ -108,14 +139,16 @@ export function Sparkline({
               />
             ) : null
           )}
-          {showTooltip && (
-            <Tooltip 
-              content={tooltipContent}
-              cursor={false}
-            />
-          )}
         </LineChart>
       </ResponsiveContainer>
+      
+      {/* Professional tooltip */}
+      <ChartTooltip
+        {...tooltipState.data}
+        isVisible={tooltipState.isVisible}
+        referenceElement={tooltipState.referenceElement}
+        onHide={hideTooltip}
+      />
     </div>
   );
 }
