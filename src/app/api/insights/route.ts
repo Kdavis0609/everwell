@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
         }
       });
     } catch (error) {
-      console.error('AI insights generation error:', error);
+      console.warn('AI insights generation error:', error);
       
              // Handle specific provider errors
        if (error instanceof Error) {
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
     }
 
     // If we get here, something unexpected happened
-    console.error('Unexpected error in insights generation');
+    console.warn('Unexpected error in insights generation');
     return NextResponse.json(
       { 
         ok: false, 
@@ -263,10 +263,8 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
-  }
-
   } catch (error) {
-    console.error('Insights API error:', error);
+    console.warn('Insights API error:', error);
     return NextResponse.json(
       { ok: false, reason: 'server_error', message: 'Internal server error' },
       { status: 500 }
