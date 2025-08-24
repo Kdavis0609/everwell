@@ -3,6 +3,7 @@ import { Resend } from 'resend';
 import { createSupabaseServer } from '@/lib/supabase/server';
 import { InsightsService } from '@/lib/services/insights-service';
 import { MetricsService } from '@/lib/services/metrics-service';
+import { getBaseUrl } from '@/lib/utils/url';
 
 // Initialize Resend only when API key is available
 const getResend = () => {
@@ -224,7 +225,7 @@ function generateEmailContent({
       </div>
 
       <div style="text-align: center;">
-        <a href="${process.env.NEXT_PUBLIC_SITE_URL}/dashboard" class="cta">
+        <a href="${getBaseUrl()}/dashboard" class="cta">
           Log Today's Metrics →
         </a>
       </div>
@@ -232,7 +233,7 @@ function generateEmailContent({
       <div class="footer">
         <p><strong>EverWell</strong> - Your personal health companion</p>
         <p>This email contains informational guidance only and is not medical advice.</p>
-        <p><a href="${process.env.NEXT_PUBLIC_SITE_URL}/settings">Manage email preferences</a></p>
+        <p><a href="${getBaseUrl()}/settings">Manage email preferences</a></p>
       </div>
     </body>
     </html>
@@ -265,12 +266,12 @@ TODAY'S METRICS TO TRACK
 You have ${enabledMetrics.length} metrics enabled:
 ${enabledMetrics.map((metric: any) => `- ${metric.name}`).join('\n')}
 
-Log your metrics: ${process.env.NEXT_PUBLIC_SITE_URL}/dashboard
+    Log your metrics: ${getBaseUrl()}/dashboard
 
 ---
 EverWell - Your personal health companion
 This email contains informational guidance only and is not medical advice.
-Manage email preferences: ${process.env.NEXT_PUBLIC_SITE_URL}/settings
+Manage email preferences: ${getBaseUrl()}/settings
   `;
 
   return { html, text };

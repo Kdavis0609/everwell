@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import Link from 'next/link';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 import { LoadingSpinner } from '@/components/loading-spinner';
+import { getAuthCallbackUrl } from '@/lib/utils/url';
 
 interface PasswordRequirement {
   label: string;
@@ -93,7 +94,7 @@ export default function SignupPage() {
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/auth/callback`
+          emailRedirectTo: getAuthCallbackUrl()
         }
       });
 

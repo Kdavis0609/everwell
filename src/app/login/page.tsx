@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import Link from 'next/link';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { parseRedirectTo } from '@/lib/utils/redirect';
+import { getAuthCallbackUrl } from '@/lib/utils/url';
 
 // WHY: Separate component that uses useSearchParams to avoid static generation issues
 function LoginForm() {
@@ -113,7 +114,7 @@ function LoginForm() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(formData.email, {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/auth/callback?type=recovery`
+        redirectTo: getAuthCallbackUrl('recovery')
       });
 
       if (error) {
@@ -153,7 +154,7 @@ function LoginForm() {
             <Auth
               supabaseClient={supabase}
               view="magic_link"
-              redirectTo={`${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/auth/callback`}
+              redirectTo={getAuthCallbackUrl()}
               appearance={{
                 theme: ThemeSupa,
                 variables: {

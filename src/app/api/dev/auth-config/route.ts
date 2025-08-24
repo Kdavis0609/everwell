@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getBaseUrl } from '@/lib/utils/url';
 
 export async function GET() {
   // Only allow in development
@@ -6,7 +7,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Not available in production' }, { status: 403 });
   }
   try {
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+    const siteUrl = getBaseUrl();
     
     const config = {
       siteUrl,
