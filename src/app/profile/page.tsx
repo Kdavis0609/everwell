@@ -158,7 +158,7 @@ export default function ProfilePage() {
                try {
           const { data, error } = await supabase
             .from('profiles')
-            .select('id, email, full_name, handle, created_at, updated_at')
+            .select('id, email, full_name, handle, avatar_url, created_at, updated_at')
             .eq('id', user.id)
             .single();
          
@@ -184,7 +184,7 @@ export default function ProfilePage() {
                 id: user.id,
                 email: user.email
               })
-              .select('id, email, full_name, handle, created_at, updated_at')
+              .select('id, email, full_name, handle, avatar_url, created_at, updated_at')
               .single();
 
           if (createError) {
