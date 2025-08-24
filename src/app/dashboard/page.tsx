@@ -556,7 +556,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="flex items-center space-x-2">
             <LoadingSpinner size={20} />
-            <span className="text-gray-600">Loading...</span>
+            <span className="text-gray-700">Loading...</span>
           </div>
         </div>
       </AppShell>
@@ -573,7 +573,7 @@ export default function DashboardPage() {
               <Settings className="w-8 h-8 text-primary-foreground" />
             </div>
             <h2 className="text-xl font-semibold">Setup Required</h2>
-            <p className="text-gray-600 max-w-md">
+            <p className="text-gray-700 max-w-md">
               You need to configure which health metrics you'd like to track. 
               This will only take a moment.
             </p>
@@ -781,7 +781,7 @@ export default function DashboardPage() {
                         Get personalized insights and recommendations based on your health data
                       </CardDescription>
                       {insights?.usage && (
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-xs text-gray-700">
                           Used {insights.usage.todayCount}/{insights.usage.dailyLimit} today
                           {insights.cached && <span className="ml-2 text-blue-600">(cached)</span>}
                         </div>
@@ -846,7 +846,7 @@ export default function DashboardPage() {
                         </div>
                       ) : (
                         <div className="text-center py-8">
-                          <p className="text-gray-600 mb-4">
+                          <p className="text-gray-700 mb-4">
                             Generate AI-powered insights based on your health data patterns
                           </p>
                           <Button onClick={generateInsights} disabled={insightsLoading}>
@@ -944,7 +944,7 @@ export default function DashboardPage() {
                                     <p className="text-sm font-medium text-gray-900">
                                       {MetricsService.getMeasurementDisplayName(measurement)}
                                     </p>
-                                    <p className="text-xs text-gray-500">
+                                    <p className="text-xs text-gray-600">
                                       {formatDate(measurement.measured_at)}
                                     </p>
                                   </div>

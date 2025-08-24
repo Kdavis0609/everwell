@@ -28,6 +28,7 @@ export default function ProfilePage() {
   const [handleLoading, setHandleLoading] = useState(false);
   const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null);
   const [handleDebounceTimer, setHandleDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+  const [handleJustUpdated, setHandleJustUpdated] = useState(false);
 
   // Check if there are unsaved changes (only for full_name since email is read-only)
   const hasChanges = profile && authUser && (
@@ -222,12 +223,17 @@ export default function ProfilePage() {
         full_name: profile.full_name || ''
       });
       
-      // Set handle data
-      setHandleData({
-        handle: profile.handle || ''
-      });
+             // Set handle data
+       setHandleData({
+         handle: profile.handle || ''
+       });
 
-      console.log('Profile load completed successfully');
+       // If there's already a saved handle, mark it as just updated to hide the availability section
+       if (profile.handle) {
+         setHandleJustUpdated(true);
+       }
+
+       console.log('Profile load completed successfully');
 
     } catch (error) {
       console.error('Profile load error:', error);
@@ -363,6 +369,9 @@ export default function ProfilePage() {
     const normalizedValue = value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
     setHandleData({ handle: normalizedValue });
 
+    // Reset the just updated flag when user starts typing
+    setHandleJustUpdated(false);
+
     // Clear existing timer
     if (handleDebounceTimer) {
       clearTimeout(handleDebounceTimer);
@@ -454,6 +463,7 @@ export default function ProfilePage() {
 
              toast.success('Handle updated successfully!');
              setHandleAvailable(true);
+             setHandleJustUpdated(true);
              return;
            }
         }
@@ -489,6 +499,7 @@ export default function ProfilePage() {
 
          toast.success('Handle updated successfully!');
          setHandleAvailable(true);
+         setHandleJustUpdated(true);
        } else {
          console.error('No data returned from handle update');
          toast.error('Handle update failed: No data returned');
@@ -507,7 +518,7 @@ export default function ProfilePage() {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="flex items-center space-x-2">
             <LoadingSpinner size={20} />
-            <span className="text-gray-600">Loading profile...</span>
+            <span className="text-gray-700">Loading profile...</span>
           </div>
         </div>
       </AppShell>
@@ -528,7 +539,7 @@ export default function ProfilePage() {
             </Button>
             <div>
               <h1 className="text-2xl font-bold text-foreground">Profile Settings</h1>
-              <p className="text-muted-foreground">Manage your account information and preferences</p>
+              <p className="text-gray-700">Manage your account information and preferences</p>
             </div>
           </div>
         </div>
@@ -592,7 +603,7 @@ export default function ProfilePage() {
                       disabled
                       className="bg-muted text-muted-foreground"
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-gray-600">
                       This is the email address your account was created with. To change your email, please contact support.
                     </p>
                   </div>
@@ -624,24 +635,26 @@ export default function ProfilePage() {
                         )}
                       </Button>
                     </div>
-                    <div className="flex items-center space-x-2 text-xs">
-                      {handleData.handle && (
-                        <>
-                          {handleAvailable === true && (
-                            <span className="text-green-600">✓ Available</span>
-                          )}
-                          {handleAvailable === false && (
-                            <span className="text-red-600">✗ Taken</span>
-                          )}
-                          {handleAvailable === null && handleData.handle.length >= 3 && (
-                            <span className="text-yellow-600">Checking...</span>
-                          )}
-                        </>
-                      )}
-                      <span className="text-muted-foreground">
-                        {handleData.handle.length}/30 characters
-                      </span>
-                    </div>
+                                         {!handleJustUpdated && (
+                       <div className="flex items-center space-x-2 text-xs">
+                         {handleData.handle && (
+                           <>
+                             {handleAvailable === true && (
+                               <span className="text-green-600">✓ Available</span>
+                             )}
+                             {handleAvailable === false && (
+                               <span className="text-red-600">✗ Taken</span>
+                             )}
+                             {handleAvailable === null && handleData.handle.length >= 3 && (
+                               <span className="text-yellow-600">Checking...</span>
+                             )}
+                           </>
+                         )}
+                         <span className="text-muted-foreground">
+                           {handleData.handle.length}/30 characters
+                         </span>
+                       </div>
+                     )}
                     <p className="text-xs text-muted-foreground">
                       Your unique handle for sharing your profile. Use only letters, numbers, hyphens, and underscores.
                     </p>
@@ -672,94 +685,6 @@ export default function ProfilePage() {
                       </p>
                     )}
                    
-                                       {/* Debug info */}
-                    <div className="mt-4 p-2 bg-muted rounded text-xs">
-                      <p><strong>Debug Info:</strong></p>
-                      <p>Form Data: "{formData.full_name}" (length: {formData.full_name.length})</p>
-                      <p>Profile: "{profile?.full_name || 'null'}" (length: {(profile?.full_name || '').length})</p>
-                      <p>Form Data Trimmed: "{formData.full_name.trim()}"</p>
-                      <p>Profile Trimmed: "{(profile?.full_name || '').trim()}"</p>
-                      <p>Has Changes: {hasChanges ? 'true' : 'false'}</p>
-                      <p>Has Changes Alt: {hasChangesAlt ? 'true' : 'false'}</p>
-                      <p>Has Changes Robust: {hasChangesRobust ? 'true' : 'false'}</p>
-                                             <p>Auth User: {authUser ? 'loaded' : 'null'}</p>
-                       <p>Handle: "{profile?.handle || 'null'}"</p>
-                       <p>Created At: "{profile?.created_at || 'null'}"</p>
-                     {!profile?.handle && (
-                       <p className="text-yellow-600 mt-2">
-                         <strong>Note:</strong> Handle feature requires database migration. 
-                         Run the SQL in handles_migration.sql in your Supabase dashboard.
-                       </p>
-                     )}
-                                                                 <button 
-                        onClick={() => {
-                          console.log('Test button clicked');
-                          setFormData({ full_name: 'Test Change' });
-                        }}
-                        className="mt-2 px-2 py-1 bg-blue-500 text-white rounded text-xs mr-2"
-                      >
-                        Test Change
-                      </button>
-                      <button 
-                        onClick={async () => {
-                          console.log('Testing database functions...');
-                          const supabase = createSupabaseBrowser();
-                          
-                          // Test basic profile access
-                          try {
-                            const { data: basicTest, error: basicError } = await supabase
-                              .from('profiles')
-                              .select('id')
-                              .limit(1);
-                            console.log('Basic profile test:', { data: basicTest, error: basicError });
-                          } catch (e) {
-                            console.log('Basic profile test failed:', e);
-                          }
-                          
-                          // Test if handle column exists
-                          try {
-                            const { data: profileTest, error: profileError } = await supabase
-                              .from('profiles')
-                              .select('handle')
-                              .limit(1);
-                            console.log('Handle column test:', { data: profileTest, error: profileError });
-                          } catch (e) {
-                            console.log('Handle column test failed:', e);
-                          }
-                          
-                          // Test other columns
-                          try {
-                            const { data: fullTest, error: fullError } = await supabase
-                              .from('profiles')
-                              .select('id, email, full_name, avatar_url, created_at, updated_at')
-                              .limit(1);
-                            console.log('Full profile test:', { data: fullTest, error: fullError });
-                          } catch (e) {
-                            console.log('Full profile test failed:', e);
-                          }
-                          
-                          // Test RPC functions
-                          try {
-                            const { data: rpcTest, error: rpcError } = await supabase.rpc('is_handle_available', { candidate: 'test' });
-                            console.log('RPC function test:', { data: rpcTest, error: rpcError });
-                          } catch (e) {
-                            console.log('RPC function test failed:', e);
-                          }
-                        }}
-                        className="mt-2 px-2 py-1 bg-green-500 text-white rounded text-xs mr-2"
-                      >
-                        Test DB Functions
-                      </button>
-                      <button 
-                        onClick={async () => {
-                          console.log('Refreshing profile data...');
-                          await loadProfile();
-                        }}
-                        className="mt-2 px-2 py-1 bg-purple-500 text-white rounded text-xs"
-                      >
-                        Refresh Profile
-                      </button>
-                   </div>
                 </div>
               </CardContent>
             </Card>

@@ -56,8 +56,8 @@ export function WeeklyPlanCard({ weeklyPlan, onRegenerate, loading = false }: We
         </CardHeader>
         <CardContent>
           <div className="text-center py-6">
-            <Calendar className="h-12 w-12 text-gray-500 mx-auto mb-3" />
-            <p className="text-sm text-gray-600 mb-4">
+            <Calendar className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+            <p className="text-sm text-gray-700 mb-4">
               Generate your first weekly coaching plan based on your goals and progress
             </p>
             <Button onClick={handleRegenerate} disabled={loading}>
@@ -101,7 +101,7 @@ export function WeeklyPlanCard({ weeklyPlan, onRegenerate, loading = false }: We
               <div className="space-y-2">
                 {weeklyPlan.actions.map((action, index) => (
                   <div key={index} className="flex items-start space-x-2">
-                    <span className="text-xs text-gray-500 mt-1">•</span>
+                    <span className="text-xs text-gray-600 mt-1">•</span>
                     <p className="text-sm text-gray-700">{action}</p>
                   </div>
                 ))}

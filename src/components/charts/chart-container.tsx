@@ -154,7 +154,7 @@ export function ChartContainer({ userId, enabledMetrics }: ChartContainerProps) 
           <CardDescription>No metrics enabled for tracking</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-gray-600">
+                      <div className="text-center py-8 text-gray-700">
             <Activity className="h-12 w-12 mx-auto mb-3" />
             <p>Enable metrics in settings to see trends</p>
           </div>

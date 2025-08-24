@@ -104,7 +104,7 @@ export default function InsightsPage() {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="flex items-center space-x-2">
             <LoadingSpinner size={20} />
-            <span className="text-muted-foreground">Loading insights...</span>
+            <span className="text-gray-700">Loading insights...</span>
           </div>
         </div>
       </AppShell>
@@ -188,8 +188,8 @@ export default function InsightsPage() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground mb-4">
+                            <Brain className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+            <p className="text-gray-700 mb-4">
                   No AI insights available yet. Generate your first insight to get started.
                 </p>
                 <Button onClick={handleRegenerateInsights} disabled={generating}>

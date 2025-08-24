@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Calendar, TrendingUp } from 'lucide-react';
 import { Line, LineChart, CartesianGrid, XAxis, YAxis, Legend, ResponsiveContainer } from 'recharts';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { ChartTooltip, useChartTooltip } from './ChartTooltip';
 
 interface DataPoint {
@@ -42,6 +42,11 @@ export function TrendChart({
 }: TrendChartProps) {
   const [selectedRange, setSelectedRange] = useState(currentRange);
   const { tooltipState, showTooltip, hideTooltip } = useChartTooltip();
+
+  // Sync selectedRange with currentRange prop
+  useEffect(() => {
+    setSelectedRange(currentRange);
+  }, [currentRange]);
 
   const rangeOptions = [
     { value: 7, label: '7d' },
@@ -100,6 +105,8 @@ export function TrendChart({
     }
   }, [data, annotations]);
 
+
+
   // Use fallback colors to avoid CSS variable issues
   const chartColors = {
     primary: '#2563EB',
@@ -112,8 +119,12 @@ export function TrendChart({
 
   const handlePointHover = (event: React.MouseEvent | React.FocusEvent, point: any) => {
     const element = event.currentTarget as HTMLElement;
+    
+    // Get the metric name for the tooltip title
+    const metricName = availableMetrics.find(m => m.slug === metric)?.name || metric;
+    
     showTooltip({
-      title: metric,
+      title: metricName,
       date: point.date,
       value: point.value,
       unit,
@@ -137,7 +148,7 @@ export function TrendChart({
             <div className="flex items-center space-x-3">
               {/* Metric Selector */}
               <div className="flex items-center space-x-2">
-                <label className="text-xs font-medium text-muted-foreground">Metric:</label>
+                <label className="text-xs font-medium text-gray-700">Metric:</label>
                 <Select value={metric} onValueChange={onMetricChange} disabled>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
@@ -154,10 +165,15 @@ export function TrendChart({
 
               {/* Range Selector */}
               <div className="flex items-center space-x-2">
-                <label className="text-xs font-medium text-muted-foreground">Range:</label>
-                <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange} disabled>
+                <label className="text-xs font-medium text-gray-700">Range:</label>
+                <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange} disabled className="bg-muted/50">
                   {rangeOptions.map((option) => (
-                    <ToggleGroupItem key={`range-${option.value}`} value={option.value.toString()} size="sm">
+                    <ToggleGroupItem 
+                      key={`range-${option.value}`} 
+                      value={option.value.toString()} 
+                      size="sm"
+                      className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+                    >
                       {option.label}
                     </ToggleGroupItem>
                   ))}
@@ -188,7 +204,7 @@ export function TrendChart({
             <div className="flex items-center space-x-3">
               {/* Metric Selector */}
               <div className="flex items-center space-x-2">
-                <label className="text-xs font-medium text-muted-foreground">Metric:</label>
+                <label className="text-xs font-medium text-gray-700">Metric:</label>
                 <Select value={metric} onValueChange={onMetricChange}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
@@ -205,10 +221,15 @@ export function TrendChart({
 
               {/* Range Selector */}
               <div className="flex items-center space-x-2">
-                <label className="text-xs font-medium text-muted-foreground">Range:</label>
-                                  <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange}>
+                <label className="text-xs font-medium text-gray-700">Range:</label>
+                  <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange} className="bg-muted/50">
                     {rangeOptions.map((option) => (
-                      <ToggleGroupItem key={`range-${option.value}`} value={option.value.toString()} size="sm">
+                      <ToggleGroupItem 
+                        key={`range-${option.value}`} 
+                        value={option.value.toString()} 
+                        size="sm"
+                        className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+                      >
                         {option.label}
                       </ToggleGroupItem>
                     ))}
@@ -218,11 +239,11 @@ export function TrendChart({
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-64 flex items-center justify-center text-gray-600">
+          <div className="h-64 flex items-center justify-center text-gray-700">
             <div className="text-center">
               <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
               <p className="mb-2">No measurements recorded for {metric}</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-gray-700">
                 Add some measurements in "Today's Metrics" to see trends
               </p>
             </div>
@@ -246,7 +267,7 @@ export function TrendChart({
           <div className="flex items-center space-x-3">
             {/* Metric Selector */}
             <div className="flex items-center space-x-2">
-              <label className="text-xs font-medium text-muted-foreground">Metric:</label>
+              <label className="text-xs font-medium text-gray-700">Metric:</label>
               <Select value={metric} onValueChange={onMetricChange}>
                 <SelectTrigger className="w-32 h-8 text-xs">
                   <SelectValue />
@@ -263,10 +284,15 @@ export function TrendChart({
 
             {/* Range Selector */}
             <div className="flex items-center space-x-2">
-              <label className="text-xs font-medium text-muted-foreground">Range:</label>
-                                <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange}>
+              <label className="text-xs font-medium text-gray-700">Range:</label>
+                <ToggleGroup type="single" value={selectedRange.toString()} onValueChange={handleRangeChange} className="bg-muted/50">
                     {rangeOptions.map((option) => (
-                      <ToggleGroupItem key={`range-${option.value}`} value={option.value.toString()} size="sm">
+                      <ToggleGroupItem 
+                        key={`range-${option.value}`} 
+                        value={option.value.toString()} 
+                        size="sm"
+                        className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm"
+                      >
                         {option.label}
                       </ToggleGroupItem>
                     ))}
@@ -300,32 +326,31 @@ export function TrendChart({
                 dataKey="value" 
                 stroke={chartColors.primary} 
                 strokeWidth={2}
-                dot={(props) => {
-                  const { cx, cy, payload } = props;
-                  if (payload.value !== null && payload.value !== undefined && !isNaN(payload.value)) {
-                    return (
-                      <circle
-                        key={`dot-${payload.date}-${payload.value}`}
-                        cx={cx}
-                        cy={cy}
-                        r={4}
-                        stroke={chartColors.primary}
-                        strokeWidth={2}
-                        fill={chartColors.background}
-                        onMouseEnter={(e) => handlePointHover(e, payload)}
-                        onMouseLeave={hideTooltip}
-                        onFocus={(e) => handlePointHover(e, payload)}
-                        onBlur={hideTooltip}
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`${metric} on ${payload.date}: ${payload.value} ${unit}`}
-                        style={{ cursor: 'pointer' }}
-                      />
-                    );
-                  }
-                  return <circle key={`empty-dot-${payload.date}`} cx={0} cy={0} r={0} />; // Return empty circle instead of null
+                dot={{
+                  r: 4,
+                  stroke: chartColors.primary,
+                  strokeWidth: 2,
+                  fill: chartColors.background
                 }}
-                activeDot={{ r: 6, stroke: chartColors.primary, strokeWidth: 2, fill: chartColors.primary }}
+                activeDot={{
+                  r: 6,
+                  stroke: chartColors.primary,
+                  strokeWidth: 2,
+                  fill: chartColors.primary,
+                  onMouseEnter: (e: any, payload: any) => {
+                    const element = e.currentTarget as HTMLElement;
+                    const metricName = availableMetrics.find(m => m.slug === metric)?.name || metric;
+                    showTooltip({
+                      title: metricName,
+                      date: payload.date,
+                      value: payload.value,
+                      unit,
+                      color: chartColors.primary,
+                      align: 'top'
+                    }, element);
+                  },
+                  onMouseLeave: hideTooltip
+                }}
                 name="Daily Value"
               />
               

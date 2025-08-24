@@ -19,7 +19,7 @@ export function HeroStats({ weeklyAvg, weightDelta, sleepAvg, currentStreak }: H
   const formatDelta = (delta: number | null) => {
     if (delta === null) return '—';
     const sign = delta > 0 ? '+' : '';
-    const color = delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-gray-600';
+    const color = delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-gray-700';
     const icon = delta > 0 ? <TrendingUp className="h-3 w-3" /> : delta < 0 ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />;
     
     return (
@@ -37,7 +37,7 @@ export function HeroStats({ weeklyAvg, weightDelta, sleepAvg, currentStreak }: H
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground font-medium">This Week's Avg</p>
+              <p className="text-xs text-gray-700 font-medium">This Week's Avg</p>
               <p className="text-lg font-semibold text-foreground">
                 {formatValue(weeklyAvg, '')}
               </p>
@@ -54,7 +54,7 @@ export function HeroStats({ weeklyAvg, weightDelta, sleepAvg, currentStreak }: H
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Weight Δ</p>
+              <p className="text-xs text-gray-700 font-medium">Weight Δ</p>
               <p className="text-lg font-semibold text-foreground">
                 {formatDelta(weightDelta)}
               </p>
@@ -71,7 +71,7 @@ export function HeroStats({ weeklyAvg, weightDelta, sleepAvg, currentStreak }: H
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Sleep Avg</p>
+              <p className="text-xs text-gray-700 font-medium">Sleep Avg</p>
               <p className="text-lg font-semibold text-foreground">
                 {formatValue(sleepAvg, 'h')}
               </p>
@@ -88,7 +88,7 @@ export function HeroStats({ weeklyAvg, weightDelta, sleepAvg, currentStreak }: H
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Streak</p>
+              <p className="text-xs text-gray-700 font-medium">Streak</p>
               <p className="text-lg font-semibold text-foreground">
                 {currentStreak} days
               </p>

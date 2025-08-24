@@ -64,8 +64,8 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
         </CardHeader>
         <CardContent>
           <div className="text-center py-6">
-            <Target className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">
+            <Target className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+            <p className="text-sm text-gray-700">
               Set target values in your metric settings to see weekly progress
             </p>
           </div>
@@ -149,7 +149,7 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
             <CardDescription>Your progress towards weekly goals</CardDescription>
           </div>
           <div className="flex items-center space-x-2">
-            <label className="text-xs font-medium text-muted-foreground">Aggregation:</label>
+            <label className="text-xs font-medium text-gray-700">Aggregation:</label>
             <Select value={aggregationType} onValueChange={(value: 'avg' | 'median') => setAggregationType(value)}>
               <SelectTrigger className="w-20 h-7 text-xs">
                 <SelectValue />
@@ -177,7 +177,7 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
               <div key={index} className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-foreground">{displayName}</span>
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-xs text-gray-700">
                     {currentValue !== null ? `${currentValue.toFixed(1)}` : 'No data'} / {targetValue}
                   </div>
                 </div>
@@ -202,12 +202,12 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
                     {progressPercent !== null && progressPercent > 0 ? (
                       <div className="space-y-1">
                         <Progress value={Math.min(progressPercent, 100)} className="h-2" />
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-xs text-gray-700">
                           {progressPercent.toFixed(0)}% of weekly target
                         </div>
                       </div>
                     ) : (
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-xs text-gray-700">
                         No data this week
                       </div>
                     )}
