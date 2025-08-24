@@ -23,7 +23,7 @@ import type { Profile } from '@/lib/types/profile';
 import { TrendingUp, Plus, Activity, Settings, Clock } from 'lucide-react';
 import Link from 'next/link';
 import { MigrationRequired } from '@/components/migration-required';
-import { formatDate } from '@/lib/utils/date';
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { logError } from '@/lib/errors';
 
@@ -85,48 +85,55 @@ export default function DashboardPage() {
     }, 10000); // 10 second timeout
     
     const load = async () => {
-      setLoading(true);
-      setErr(null);
-
-      const supabase = createSupabaseBrowser();
-      const { data: userData, error: userErr } = await supabase.auth.getUser();
-      if (userErr || !userData.user) {
-        if (!cancelled) {
-          setErr('Authentication error. Please try refreshing the page.');
-          setLoading(false);
-        }
-        return;
-      }
-
-      const uid = userData.user.id;
-      setUserId(uid);
-
-      // Load user profile
       try {
-        const profile = await getProfile(supabase);
-        if (!cancelled && profile) {
-          setProfile(profile);
-        } else if (!cancelled) {
-          console.warn('No profile returned, continuing without profile');
-        }
-                        } catch (profileError) {
-                    // Don't fail the entire dashboard load for profile errors
-                    if (!cancelled) {
-                      console.warn('Profile loading failed, continuing without profile');
-                    }
-                  }
+        setLoading(true);
+        setErr(null);
 
-      // Load enabled metrics and recent measurements
-      try {
-        await loadEnabledMetrics(supabase);
-        await loadRecentMeasurements(supabase);
-        await loadTodaysMeasurements(supabase);
-        await loadWeeklyData(supabase);
-        await calculateHeroStats(supabase);
+        const supabase = createSupabaseBrowser();
+        const { data: userData, error: userErr } = await supabase.auth.getUser();
+        if (userErr || !userData.user) {
+          if (!cancelled) {
+            setErr('Authentication error. Please try refreshing the page.');
+            setLoading(false);
+          }
+          return;
+        }
+
+        const uid = userData.user.id;
+        setUserId(uid);
+
+        // Load user profile
+        try {
+          const profile = await getProfile(supabase);
+          if (!cancelled && profile) {
+            setProfile(profile);
+          } else if (!cancelled) {
+            console.warn('No profile returned, continuing without profile');
+          }
+        } catch (profileError) {
+          // Don't fail the entire dashboard load for profile errors
+          if (!cancelled) {
+            console.warn('Profile loading failed, continuing without profile:', profileError);
+          }
+        }
+
+        // Load enabled metrics and recent measurements
+        try {
+          await loadEnabledMetrics(supabase);
+          await loadRecentMeasurements(supabase);
+          await loadTodaysMeasurements(supabase);
+          await loadWeeklyData(supabase);
+          await calculateHeroStats(supabase);
+        } catch (error) {
+          if (!cancelled) {
+            console.warn('Dashboard data loading error:', error);
+            setErr('Failed to load dashboard data. Please try refreshing the page.');
+          }
+        }
       } catch (error) {
         if (!cancelled) {
-          console.warn('Dashboard data loading error:', error);
-          setErr('Failed to load dashboard data. Please try refreshing the page.');
+          console.error('Dashboard load error:', error);
+          setErr('Failed to load dashboard. Please try refreshing the page.');
         }
       } finally {
         if (!cancelled) {
@@ -737,11 +744,10 @@ export default function DashboardPage() {
                         <form onSubmit={(e) => { e.preventDefault(); saveMetrics(); }} className="space-y-6">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {enabledMetrics.map((metric) => {
-                                                             const metricKey = metric.slug || metric.id || `metric-${metric.id || 'unknown'}`;
+                              const metricKey = metric.slug || metric.id || `metric-${metric.id || 'unknown'}`;
                               return (
                                 <div key={metricKey} className={metric.input_kind === 'text' ? 'md:col-span-2' : ''}>
                                   <MetricInput
-                                    key={metricKey}
                                     metric={metric}
                                     value={form[metric.slug || '']}
                                     onChange={(value) => handleMetricChange(metric.slug || '', value)}
@@ -810,7 +816,7 @@ export default function DashboardPage() {
                               <h4 className="font-medium mb-2 text-gray-900">Recommendations</h4>
                               <ul className="space-y-1">
                                 {insights.insights.recommendations.map((rec: string, index: number) => (
-                                  <li key={`rec-${index}-${rec.substring(0, 20)}`} className="text-sm text-gray-700 flex items-start">
+                                  <li key={`rec-${index}-${rec.substring(0, 20).replace(/\s+/g, '-')}`} className="text-sm text-gray-700 flex items-start">
                                     <span className="mr-2">•</span>
                                     {rec}
                                   </li>
@@ -825,7 +831,7 @@ export default function DashboardPage() {
                               <h4 className="font-medium mb-2 text-gray-900">Observations</h4>
                               <ul className="space-y-1">
                                 {insights.insights.observations.map((obs: string, index: number) => (
-                                  <li key={`obs-${index}-${obs.substring(0, 20)}`} className="text-sm text-gray-700 flex items-start">
+                                  <li key={`obs-${index}-${obs.substring(0, 20).replace(/\s+/g, '-')}`} className="text-sm text-gray-700 flex items-start">
                                     <span className="mr-2">•</span>
                                     {obs}
                                   </li>
@@ -931,7 +937,7 @@ export default function DashboardPage() {
                           {/* Entries List */}
                           <div className="max-h-96 overflow-y-auto space-y-2">
                             {getFilteredAndSortedMeasurements().slice(0, entriesLimit).map((measurement, index) => (
-                              <div key={`${measurement.id}-${index}`} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                              <div key={`${measurement.id}-${measurement.measured_at}-${index}`} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
                                 <div className="flex items-center space-x-3">
                                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                                   <div>

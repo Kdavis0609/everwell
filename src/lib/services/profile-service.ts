@@ -14,39 +14,45 @@ export async function getProfile(sb: SupabaseClient) {
     }
 
     const uid = session.user.id;
-                    // Attempting to fetch profile for user
+    console.log('Attempting to fetch profile for user:', uid);
     
-    // First try to get profile with handle column
+    // Try to get profile with minimal columns first, then add more if they exist
     let { data, error } = await sb
       .from('profiles')
-      .select('id, email, full_name, avatar_url, handle, created_at, updated_at')
+      .select('*')
       .eq('id', uid)
       .maybeSingle();
 
-    // If that fails due to missing handle column, try without it
-    if (error && error.message?.includes('column') && error.message?.includes('handle')) {
-      console.log('Handle column not found, trying without handle...');
-      const { data: dataWithoutHandle, error: errorWithoutHandle } = await sb
+    // If that fails, try with just the basic columns
+    if (error) {
+      console.log('Full profile query failed, trying basic columns...');
+      const { data: basicData, error: basicError } = await sb
         .from('profiles')
-        .select('id, email, full_name, avatar_url, created_at, updated_at')
+        .select('id, email, full_name')
         .eq('id', uid)
         .maybeSingle();
       
-      if (dataWithoutHandle) {
-        data = { ...dataWithoutHandle, handle: null };
+      if (basicData) {
+        data = { 
+          ...basicData, 
+          avatar_url: null, 
+          handle: null, 
+          created_at: null, 
+          updated_at: null 
+        };
         error = null;
       } else {
-        error = errorWithoutHandle;
+        error = basicError;
       }
     }
 
     if (error) { 
-                      console.warn('Profile query error:', error);
+      console.warn('Profile query error:', error);
       logError('getProfile.query', error, { uid }); 
       return null; // WHY: Return null instead of throwing for query errors
     }
     
-                    // Profile query completed
+    console.log('Profile query completed, data:', data);
     
     // Transform the data to match the Profile type (id -> user_id)
     if (data) {
@@ -54,43 +60,26 @@ export async function getProfile(sb: SupabaseClient) {
         user_id: data.id,
         email: data.email,
         full_name: data.full_name,
-        avatar_url: data.avatar_url,
-        handle: data.handle,
-        created_at: data.created_at,
-        updated_at: data.updated_at
+        avatar_url: data.avatar_url || null,
+        handle: data.handle || null,
+        created_at: data.created_at || null,
+        updated_at: data.updated_at || null
       };
     }
     
     // If no profile exists, try to create one
-                    // No profile found, attempting to create one
+    console.log('No profile found, attempting to create one');
     try {
       await ensureProfile(sb);
-      // Try to fetch the profile again
-      let { data: newData, error: newError } = await sb
+      // Try to fetch the profile again with basic columns
+      const { data: newData, error: newError } = await sb
         .from('profiles')
-        .select('id, email, full_name, avatar_url, handle, created_at, updated_at')
+        .select('id, email, full_name')
         .eq('id', uid)
         .maybeSingle();
-
-      // If that fails due to missing handle column, try without it
-      if (newError && newError.message?.includes('column') && newError.message?.includes('handle')) {
-        console.log('Handle column not found in retry, trying without handle...');
-        const { data: newDataWithoutHandle, error: newErrorWithoutHandle } = await sb
-          .from('profiles')
-          .select('id, email, full_name, avatar_url, created_at, updated_at')
-          .eq('id', uid)
-          .maybeSingle();
-        
-        if (newDataWithoutHandle) {
-          newData = { ...newDataWithoutHandle, handle: null };
-          newError = null;
-        } else {
-          newError = newErrorWithoutHandle;
-        }
-      }
         
       if (newError) {
-                          console.warn('Failed to fetch profile after creation:', newError);
+        console.warn('Failed to fetch profile after creation:', newError);
         return null;
       }
       
@@ -99,14 +88,14 @@ export async function getProfile(sb: SupabaseClient) {
           user_id: newData.id,
           email: newData.email,
           full_name: newData.full_name,
-          avatar_url: newData.avatar_url,
-          handle: newData.handle,
-          created_at: newData.created_at,
-          updated_at: newData.updated_at
+          avatar_url: null,
+          handle: null,
+          created_at: null,
+          updated_at: null
         };
       }
     } catch (createError) {
-                      console.warn('Failed to create profile:', createError);
+      console.warn('Failed to create profile:', createError);
     }
     
     return null;
@@ -129,25 +118,28 @@ export async function ensureProfile(sb: SupabaseClient) {
     }
 
     const user = session.user;
+    console.log('Ensuring profile exists for user:', user.id);
+    
+    // Try to create profile with minimal required fields
     const payload = {
       id: user.id,
-      full_name: user.user_metadata?.full_name ?? null,
-      // Removed email and avatar_url since columns don't exist in database
+      email: user.email,
+      full_name: user.user_metadata?.full_name ?? null
     };
 
-                    // Attempting to upsert profile
+    console.log('Attempting to upsert profile with payload:', payload);
     
     const { error } = await sb
       .from('profiles')
       .upsert(payload, { onConflict: 'id' }); // requires unique index on id
 
     if (error) { 
-                      console.warn('Profile upsert error:', error);
+      console.warn('Profile upsert error:', error);
       logError('ensureProfile.upsert', error, { uid: user.id }); 
       return; // WHY: Return early instead of throwing for upsert errors
     }
     
-                    // Profile upsert successful
+    console.log('Profile upsert successful');
   } catch (error) {
     logError('ensureProfile.catch', error);
     return; // WHY: Return early for any unexpected errors

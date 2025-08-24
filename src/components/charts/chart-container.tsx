@@ -52,16 +52,21 @@ export function ChartContainer({ userId, enabledMetrics }: ChartContainerProps) 
       if (data.length === 0 && enabledMetrics.length > 1 && !userSelectedMetric) {
         // Find first metric with data for initial load
         for (const metric of enabledMetrics) {
-          const metricData = await MetricsService.getChartData(supabase, metric.slug, selectedRange);
-          if (metricData.length > 0) {
-            setSelectedMetric(metric.slug);
-            setChartData(metricData);
-            
-            // Generate annotations
-            const newAnnotations = generateAnnotations(metricData, metric.slug);
-            setAnnotations(newAnnotations);
-            setLoading(false);
-            return;
+          try {
+            const metricData = await MetricsService.getChartData(supabase, metric.slug, selectedRange);
+            if (metricData.length > 0) {
+              setSelectedMetric(metric.slug);
+              setChartData(metricData);
+              
+              // Generate annotations
+              const newAnnotations = generateAnnotations(metricData, metric.slug);
+              setAnnotations(newAnnotations);
+              setLoading(false);
+              return;
+            }
+          } catch (metricError) {
+            console.warn(`Error loading data for metric ${metric.slug}:`, metricError);
+            continue;
           }
         }
       }
@@ -83,45 +88,52 @@ export function ChartContainer({ userId, enabledMetrics }: ChartContainerProps) 
   const generateAnnotations = (data: any[], metricSlug: string) => {
     const annotations: Array<{ date: string; type: 'target' | 'streak' | 'best' }> = [];
     
-    if (data.length === 0) return annotations;
+    if (!data || data.length === 0) return annotations;
 
-    // Find best day
-    const bestValue = Math.max(...data.map(d => d.value).filter(v => v !== null && !isNaN(v)));
-    const bestDay = data.find(d => d.value === bestValue);
-    if (bestDay) {
-      annotations.push({
-        date: bestDay.date,
-        type: 'best'
-      });
-    }
-
-    // Find target hits (assuming target is 80% of best value for demo)
-    const targetValue = bestValue * 0.8;
-    data.forEach(point => {
-      if (point.value >= targetValue) {
+    try {
+      // Find best day
+      const validValues = data.map(d => d.value).filter(v => v !== null && !isNaN(v) && typeof v === 'number');
+      if (validValues.length === 0) return annotations;
+      
+      const bestValue = Math.max(...validValues);
+      const bestDay = data.find(d => d.value === bestValue);
+      if (bestDay) {
         annotations.push({
-          date: point.date,
-          type: 'target'
+          date: bestDay.date,
+          type: 'best'
         });
       }
-    });
 
-    // Find streaks (3+ consecutive days above average)
-    const avgValue = data.reduce((sum, d) => sum + (d.value || 0), 0) / data.length;
-    let streakCount = 0;
-    data.forEach(point => {
-      if (point.value >= avgValue) {
-        streakCount++;
-        if (streakCount >= 3) {
+      // Find target hits (assuming target is 80% of best value for demo)
+      const targetValue = bestValue * 0.8;
+      data.forEach(point => {
+        if (point.value >= targetValue) {
           annotations.push({
             date: point.date,
-            type: 'streak'
+            type: 'target'
           });
         }
-      } else {
-        streakCount = 0;
-      }
-    });
+      });
+
+      // Find streaks (3+ consecutive days above average)
+      const avgValue = data.reduce((sum, d) => sum + (d.value || 0), 0) / data.length;
+      let streakCount = 0;
+      data.forEach(point => {
+        if (point.value >= avgValue) {
+          streakCount++;
+          if (streakCount >= 3) {
+            annotations.push({
+              date: point.date,
+              type: 'streak'
+            });
+          }
+        } else {
+          streakCount = 0;
+        }
+      });
+    } catch (error) {
+      console.warn('Error generating annotations:', error);
+    }
 
     return annotations;
   };

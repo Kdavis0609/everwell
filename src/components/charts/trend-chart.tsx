@@ -63,51 +63,51 @@ export function TrendChart({
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return [];
     
-    // Filter out invalid data points first
-    const validData = data.filter(point => 
-      point.value !== null && 
-      point.value !== undefined && 
-      !isNaN(point.value)
-    );
-    
-    if (validData.length === 0) return [];
-    
-    // Calculate rolling average (7-day window) and add annotations
-    return validData.map((point, index) => {
-      const startIndex = Math.max(0, index - 6);
-      const window = validData.slice(startIndex, index + 1);
-      const validValues = window.filter(p => p.value !== null && !isNaN(p.value));
+    try {
+      // Filter out invalid data points first
+      const validData = data.filter(point => 
+        point && 
+        point.value !== null && 
+        point.value !== undefined && 
+        !isNaN(point.value) &&
+        typeof point.value === 'number'
+      );
       
-      const rollingAvg = validValues.length > 0 
-        ? validValues.reduce((sum, p) => sum + p.value, 0) / validValues.length
-        : null;
+      if (validData.length === 0) return [];
+      
+      // Calculate rolling average (7-day window) and add annotations
+      return validData.map((point, index) => {
+        const startIndex = Math.max(0, index - 6);
+        const window = validData.slice(startIndex, index + 1);
+        const validValues = window.filter(p => p.value !== null && !isNaN(p.value));
+        
+        const rollingAvg = validValues.length > 0 
+          ? validValues.reduce((sum, p) => sum + p.value, 0) / validValues.length
+          : null;
 
-      // Check for annotations
-      const annotation = annotations.find(ann => ann.date === point.date);
+        // Check for annotations
+        const annotation = annotations.find(ann => ann.date === point.date);
 
-      return {
-        ...point,
-        rollingAvg: rollingAvg !== null ? Number(rollingAvg.toFixed(1)) : null,
-        annotation: annotation?.type || null
-      };
-    });
+        return {
+          ...point,
+          rollingAvg: rollingAvg !== null ? Number(rollingAvg.toFixed(1)) : null,
+          annotation: annotation?.type || null
+        };
+      });
+    } catch (error) {
+      console.warn('Error processing chart data:', error);
+      return [];
+    }
   }, [data, annotations]);
 
-  // Get colors from CSS variables
-  const getComputedColor = (variable: string) => {
-    if (typeof window !== 'undefined') {
-      return getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
-    }
-    return '';
-  };
-
+  // Use fallback colors to avoid CSS variable issues
   const chartColors = {
-    primary: `hsl(${getComputedColor('--chart-1')})`,
-    secondary: `hsl(${getComputedColor('--chart-2')})`,
-    accent: `hsl(${getComputedColor('--chart-4')})`,
-    muted: `hsl(${getComputedColor('--muted-foreground')})`,
-    background: `hsl(${getComputedColor('--background')})`,
-    grid: `hsl(${getComputedColor('--muted')})`
+    primary: '#2563EB',
+    secondary: '#10B981',
+    accent: '#8B5CF6',
+    muted: '#6B7280',
+    background: '#FFFFFF',
+    grid: '#E5E7EB'
   };
 
   const handlePointHover = (event: React.MouseEvent | React.FocusEvent, point: any) => {

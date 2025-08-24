@@ -194,12 +194,8 @@ export function WeeklyProgressCard({ weeklyProgress, loading = false }: WeeklyPr
                     unit={unit}
                     target={targetValue}
                     color={progressPercent && progressPercent > 80 
-                      ? (typeof window !== 'undefined' 
-                          ? `hsl(${getComputedStyle(document.documentElement).getPropertyValue('--chart-2').trim()})`
-                          : '#10B981')
-                      : (typeof window !== 'undefined' 
-                          ? `hsl(${getComputedStyle(document.documentElement).getPropertyValue('--chart-1').trim()})`
-                          : '#2563EB')
+                      ? '#10B981'
+                      : '#2563EB'
                     }
                   />
                   <div className="flex-1">

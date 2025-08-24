@@ -26,6 +26,9 @@ const STATIC_PATHS = [
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Debug logging
+  console.log(`[middleware] Processing: ${pathname}`);
+
   // Skip static assets and Next.js internals
   if (STATIC_PATHS.some(path => pathname.startsWith(path)) || 
       pathname.includes('.') || // Skip files with extensions
@@ -33,6 +36,7 @@ export async function middleware(req: NextRequest) {
       pathname === '/robots.txt' ||
       pathname === '/sitemap.xml' ||
       pathname === '/manifest.json') {
+    console.log(`[middleware] Skipping static: ${pathname}`);
     return NextResponse.next();
   }
 
@@ -62,6 +66,12 @@ export async function middleware(req: NextRequest) {
     // Get session
     const { data: { session }, error } = await supabase.auth.getSession();
     
+    console.log(`[middleware] Session check for ${pathname}:`, { 
+      hasSession: !!session, 
+      error: error?.message,
+      userId: session?.user?.id?.substring(0, 8) + '...' || 'none'
+    });
+    
     if (error) {
       console.warn('[middleware.auth] Session error:', error);
     }
@@ -89,8 +99,9 @@ export async function middleware(req: NextRequest) {
       return res;
     }
 
-    // Protect dashboard and account routes
-    if ((pathname.startsWith('/dashboard') || pathname.startsWith('/account')) && !session) {
+    // Protect dashboard, account, and profile routes
+    if ((pathname.startsWith('/dashboard') || pathname.startsWith('/account') || pathname.startsWith('/profile')) && !session) {
+      console.log(`[middleware] Redirecting ${pathname} to login (no session)`);
       const url = req.nextUrl.clone();
       url.pathname = '/login';
       url.searchParams.set('redirectTo', pathname);
@@ -106,7 +117,7 @@ export async function middleware(req: NextRequest) {
     return res;
 
   } catch (error) {
-    console.warn('[middleware.auth] Unexpected error:', error);
+    console.warn('[middleware.auth] Unexpected error for', pathname, ':', error);
     
     // On error, allow the request to proceed (fail open for safety)
     return res;

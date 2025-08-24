@@ -26,10 +26,8 @@ export function Sparkline({
   unit,
   target
 }: SparklineProps) {
-  // Use CSS variable for default color if none provided
-  const defaultColor = typeof window !== 'undefined' 
-    ? `hsl(${getComputedStyle(document.documentElement).getPropertyValue('--chart-1').trim()})`
-    : '#2563EB';
+  // Use fallback color to avoid CSS variable issues
+  const defaultColor = '#2563EB';
   
   const lineColor = color || defaultColor;
   const { tooltipState, showTooltip: showTooltipHook, hideTooltip } = useChartTooltip();
