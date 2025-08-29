@@ -31,7 +31,7 @@ export function getBaseUrl(): string {
   }
   
   // Server-side: use environment variable with fallback
-  return process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+  return process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.everwellhealth.us';
 }
 
 /**

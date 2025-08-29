@@ -21,7 +21,9 @@
     "test:insights": "node scripts/test-insights-api.js",
     "check:errors": "node scripts/check-console-errors.js",
     "db:push:ps": "powershell -ExecutionPolicy Bypass -File ./scripts/db-push.ps1",
-    "db:push:bash": "bash ./scripts/db-push.sh"
+    "db:push:bash": "bash ./scripts/db-push.sh",
+    "setup:domain:ps": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-domain.ps1",
+    "setup:domain:bash": "bash ./scripts/setup-domain.sh"
   },
   "dependencies": {
     "@floating-ui/react": "^0.26.28",

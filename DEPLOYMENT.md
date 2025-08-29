@@ -15,7 +15,7 @@ Set these environment variables in your Vercel project settings:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-NEXT_PUBLIC_SITE_URL=https://your-vercel-app.vercel.app
+NEXT_PUBLIC_SITE_URL=https://www.everwellhealth.us
 ```
 
 ### Local Development

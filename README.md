@@ -2,6 +2,8 @@
 
 A modern health metrics tracking application built with Next.js, Supabase, and Tailwind CSS.
 
+**🌐 Live Site**: [https://www.everwellhealth.us](https://www.everwellhealth.us)
+
 ## Features
 
 - 🔐 **Secure Authentication** - Magic link login with Supabase Auth
@@ -49,6 +51,9 @@ A modern health metrics tracking application built with Next.js, Supabase, and T
    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
    NEXT_PUBLIC_SITE_URL=http://localhost:3000
+   
+   # For production, use:
+   # NEXT_PUBLIC_SITE_URL=https://www.everwellhealth.us
    ```
 
 4. **Set up the database**

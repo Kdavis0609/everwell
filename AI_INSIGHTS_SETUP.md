@@ -210,7 +210,7 @@ In your Vercel dashboard:
 2. Add:
    - `OPENAI_API_KEY` = your OpenAI API key
    - `CRON_SECRET` = your secure cron secret
-   - `NEXT_PUBLIC_SITE_URL` = your production URL
+   - `NEXT_PUBLIC_SITE_URL` = https://www.everwellhealth.us
 
 ### 3. Deploy and Test
 

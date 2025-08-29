@@ -36,10 +36,10 @@ Reply-to: <Your support inbox>
 Set these URLs in your Supabase project:
 
 ```
-Site URL: https://your-domain.com (or http://localhost:3000 in dev)
+Site URL: https://www.everwellhealth.us (or http://localhost:3000 in dev)
 Additional Redirect URLs:
-- https://your-domain.com/auth/callback
-- https://your-domain.com/auth/callback?type=recovery
+- https://www.everwellhealth.us/auth/callback
+- https://www.everwellhealth.us/auth/callback?type=recovery
 - http://localhost:3000/auth/callback (for development)
 - http://localhost:3000/auth/callback?type=recovery (for development)
 ```
@@ -108,7 +108,7 @@ SMTP_FROM=EverWell <no-reply@everwellhealth.us>
 
 For production:
 ```bash
-NEXT_PUBLIC_SITE_URL=https://your-domain.com
+NEXT_PUBLIC_SITE_URL=https://www.everwellhealth.us
 ```
 
 ## Common Errors & Fixes
@@ -192,7 +192,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
 NEXT_PUBLIC_SITE_URL=https://your-domain.com
 SENDGRID_API_KEY=SG.your_sendgrid_api_key_here
-SMTP_FROM=EverWell <no-reply@yourdomain.com>
+SMTP_FROM=EverWell <no-reply@everwellhealth.us>
 ```
 
 ### Domain Authentication

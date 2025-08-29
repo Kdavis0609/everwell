@@ -36,7 +36,7 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 
 For production, set `NEXT_PUBLIC_SITE_URL` to your production domain:
 ```bash
-NEXT_PUBLIC_SITE_URL=https://your-domain.com
+NEXT_PUBLIC_SITE_URL=https://www.everwellhealth.us
 ```
 
 ### Supabase Dashboard Configuration
